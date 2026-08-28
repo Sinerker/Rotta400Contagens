@@ -1,0 +1,49 @@
+# =============================================
+#  Mantem o banco do Supabase acordado
+# =============================================
+#  O plano gratuito do Supabase pausa o projeto depois de
+#  uma semana sem nenhuma atividade. Inventario e tarefa
+#  mensal: a loja abriria o site justamente no dia em que
+#  ele esta dormindo, e alguem teria que ir no painel
+#  religar na mao.
+#
+#  Esta rotina faz uma consulta minima ao banco duas vezes
+#  por semana. Nao escreve nada, nao apaga nada — so le uma
+#  linha da tabela de lojas para o Supabase registrar uso.
+#
+#  A chave usada aqui e a publicavel (a mesma do config.js).
+#  Ela ja e publica por natureza: quem protege os dados e o
+#  RLS dentro do banco, nao o segredo da chave.
+# =============================================
+
+name: Manter o banco acordado
+
+on:
+  schedule:
+    # Segunda e quinta, 12:20 UTC = 09:20 em Brasilia.
+    - cron: "20 12 * * 1,4"
+  workflow_dispatch:      # permite rodar na mao pelo botao "Run workflow"
+
+jobs:
+  acordar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consultar o banco
+        env:
+          SUPA_URL: https://twplewtoroemdvrusptp.supabase.co
+          SUPA_KEY: sb_publishable_44xTqaCIszjIoBW5Qk8gFg_Wc44DDPo
+        run: |
+          status=$(curl -sS -o /tmp/resposta.json -w "%{http_code}" \
+            "$SUPA_URL/rest/v1/loja?select=codigo&limit=1" \
+            -H "apikey: $SUPA_KEY")
+
+          echo "HTTP $status"
+          echo "Resposta: $(cat /tmp/resposta.json)"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::O banco nao respondeu como esperado (HTTP $status)."
+            echo "::error::Pode estar pausado. Abra o painel do Supabase e religue o projeto."
+            exit 1
+          fi
+
+          echo "Banco respondeu. Segue acordado."
