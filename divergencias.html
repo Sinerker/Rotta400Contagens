@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Divergências</title>
+<link rel="stylesheet" href="estilo.css"/>
+<link rel="manifest" href="manifest.json"/>
+<meta name="theme-color" content="#1a6fd4"/>
+</head>
+<body>
+
+<header class="topo">
+  <a href="index.html" class="icone" aria-label="Voltar">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+  </a>
+  <h1 id="lote-nome">—<span class="topo-sub" id="lote-sub">carregando…</span></h1>
+</header>
+
+<main>
+
+  <section class="caixa" id="caixa-fechar">
+    <span class="rotulo">Situação</span>
+    <div id="situacao" class="fraco">carregando…</div>
+    <div class="nota nota--alerta oculto" id="aviso-retrato"></div>
+    <div class="nota nota--info">
+      <b>Ao gerar, o inventário é fechado.</b>
+      <span>O coletor passa a recusar contagem nele. É o que garante que o número do
+      relatório e o número contado sejam os mesmos.</span>
+    </div>
+    <button class="btn btn--bloco btn--gg" id="btn-gerar">Fechar e gerar divergências</button>
+  </section>
+
+  <section id="caixa-res" style="display:none;flex-direction:column;gap:1rem">
+    <div class="placar" id="placar"></div>
+    <div class="linha-botoes">
+      <button class="btn" id="btn-excel">Baixar Excel</button>
+      <button class="btn btn--2" id="btn-tudo">Mostrar também os que bateram</button>
+    </div>
+    <div class="tabela-rolagem">
+      <table>
+        <thead><tr>
+          <th>Situação</th><th>Código</th><th>Produto</th>
+          <th style="text-align:right">Sistema</th>
+          <th style="text-align:right">Contado</th>
+          <th style="text-align:right">Diferença</th>
+        </tr></thead>
+        <tbody id="corpo"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script src="pwa.js"></script>
+<script src="divergencias.js"></script>
+</body>
+</html>

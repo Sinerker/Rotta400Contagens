@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Cadastro de produtos</title>
+<link rel="stylesheet" href="estilo.css"/>
+<meta name="theme-color" content="#1a6fd4"/>
+</head>
+<body>
+
+<header class="topo">
+  <a href="index.html" class="icone" aria-label="Voltar">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+  </a>
+  <h1>Cadastro de produtos<span class="topo-sub">só o auditor</span></h1>
+</header>
+
+<main>
+
+  <section class="caixa">
+    <span class="rotulo">Situação atual</span>
+    <div id="atual" class="fraco">verificando…</div>
+  </section>
+
+  <section class="caixa">
+    <span class="rotulo">Carga semanal</span>
+    <p class="fraco">Escolha o arquivo <b>embalagens com categorias.csv</b>.
+      Ele é lido aqui no navegador e enviado em blocos — o arquivo inteiro nunca
+      trafega de uma vez. Pode demorar alguns minutos.</p>
+    <input type="file" id="arquivo" accept=".csv,text/csv"/>
+    <div id="previa" class="oculto"></div>
+    <button class="btn btn--bloco btn--gg" id="btn-subir" disabled>Substituir o cadastro</button>
+    <div class="barra oculto" id="cx-barra"><i id="barra" style="width:0%"></i></div>
+    <div id="andamento" class="fraco"></div>
+  </section>
+
+  <section class="caixa">
+    <span class="rotulo">Cadastrar loja</span>
+    <p class="fraco">A loja precisa existir aqui para aparecer na lista de login.</p>
+    <div class="campo"><label for="l-codigo">Código</label>
+      <input type="text" id="l-codigo" placeholder="304"/></div>
+    <div class="campo"><label for="l-nome">Nome</label>
+      <input type="text" id="l-nome" placeholder="304-POSECOL_IRATI"/></div>
+    <button class="btn btn--2" id="btn-loja">Salvar loja</button>
+    <div id="res-loja" class="fraco"></div>
+  </section>
+
+  <section class="caixa">
+    <span class="rotulo">Vincular um acesso a uma loja</span>
+    <div class="nota nota--info">
+      <b>O gerente nunca digita e-mail.</b>
+      <span>Ele escolhe a loja numa lista e digita a senha. O e-mail é só o identificador
+      interno do Supabase e segue sempre o mesmo padrão:
+      <b>loja&lt;código&gt;@rotta400.app</b> — a loja 304 usa <code>loja304@rotta400.app</code>.
+      Crie o usuário com esse e-mail no painel do Supabase, marcando <b>Auto Confirm</b>,
+      e depois ligue ele à loja aqui.</span>
+    </div>
+    <div class="campo"><label for="v-email">E-mail do usuário</label>
+      <input type="email" id="v-email" placeholder="loja304@rotta400.app"/></div>
+    <div class="campo"><label for="v-loja">Código da loja</label>
+      <input type="text" id="v-loja" placeholder="304"/></div>
+    <div class="campo"><label for="v-papel">Papel</label>
+      <select id="v-papel"><option value="gerente">gerente</option><option value="auditor">auditor</option></select></div>
+    <button class="btn btn--2" id="btn-vincular">Vincular</button>
+    <div id="res-vinculo" class="fraco"></div>
+  </section>
+
+</main>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script src="cadastro.js"></script>
+</body>
+</html>

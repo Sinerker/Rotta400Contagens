@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Contagem</title>
+<link rel="stylesheet" href="estilo.css"/>
+<link rel="manifest" href="manifest.json"/>
+<meta name="theme-color" content="#1a6fd4"/>
+</head>
+<body>
+
+<header class="topo">
+  <a href="index.html" class="icone" aria-label="Voltar">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+  </a>
+  <h1 id="lote-nome">—<span class="topo-sub" id="lote-sub">carregando…</span></h1>
+</header>
+
+<div style="max-width:900px;margin:0 auto;padding:0 1rem">
+  <div class="barra" style="margin-top:.5rem"><i id="barra" style="width:0%"></i></div>
+</div>
+
+<main class="tem-barra-baixo" style="padding-top:.75rem">
+
+  <div class="nota nota--alerta oculto" id="aviso-pendente"></div>
+  <div class="nota nota--erro oculto" id="aviso-fechado">
+    <b>Este inventário está fechado.</b>
+    <span>Não é mais possível registrar contagem nele.</span>
+  </div>
+
+  <!-- busca -->
+  <section class="caixa">
+    <div class="campo">
+      <label for="codigo">Código de barras, código do sistema ou nome</label>
+      <input type="text" id="codigo" class="grande" autocomplete="off"
+             enterkeyhint="search" placeholder="Bipe ou digite e tecle Enter"/>
+    </div>
+    <div id="resultado"></div>
+  </section>
+
+  <!-- quantidade -->
+  <section class="caixa" id="caixa-qtd" style="display:none">
+    <div style="display:flex;gap:.7rem;align-items:flex-end">
+      <div class="campo" style="flex:1">
+        <label for="quantidade">Quantidade</label>
+        <input type="number" id="quantidade" class="grande" step="any" placeholder="0" enterkeyhint="done"/>
+      </div>
+      <label style="text-align:center">
+        <span style="display:block;font-size:.78rem;color:var(--fraco)">Qtde 1</span>
+        <input type="checkbox" id="qtde1" style="width:26px;height:26px;margin-top:.35rem"/>
+      </label>
+    </div>
+    <div id="conversao" class="nota nota--info oculto"></div>
+    <div id="jacontado" class="nota nota--alerta oculto"></div>
+    <button class="btn btn--bloco" id="btn-lancar">Lançar</button>
+  </section>
+
+  <!-- último contado -->
+  <section class="caixa oculto" id="caixa-ultimo">
+    <span class="rotulo">Último contado</span>
+    <div id="ultimo"></div>
+    <button class="btn btn--2" id="btn-desfazer">Desfazer este lançamento</button>
+  </section>
+
+</main>
+
+<!-- barra de ações, sempre visível -->
+<nav class="barra-baixo" aria-label="Ações da contagem">
+  <button id="btn-faltam">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 13h6M9 17h4"/></svg>
+    <span class="rot">Faltam contar</span>
+  </button>
+  <button id="btn-historico">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+    <span class="rot">Já contei</span>
+  </button>
+  <button id="btn-enviar">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    <span class="rot">Enviar</span>
+    <span class="marca oculto" id="marca-pendente">0</span>
+  </button>
+</nav>
+
+<!-- faltam contar -->
+<div class="fundo-modal" id="modal-faltam">
+  <div class="modal">
+    <div class="modal-topo">
+      <h2 id="titulo-faltam">Faltam contar</h2>
+      <button class="icone" id="fechar-faltam" style="background:var(--caixa2);color:var(--texto)" aria-label="Fechar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <p class="fraco">Produtos do inventário que ainda não receberam nenhuma contagem.</p>
+    <input type="text" id="busca-faltam" placeholder="Buscar…" autocomplete="off"/>
+    <div class="lista" id="lista-faltam"></div>
+  </div>
+</div>
+
+<!-- já contei -->
+<div class="fundo-modal" id="modal-historico">
+  <div class="modal">
+    <div class="modal-topo">
+      <h2 id="titulo-historico">Já contei</h2>
+      <button class="icone" id="fechar-historico" style="background:var(--caixa2);color:var(--texto)" aria-label="Fechar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <p class="fraco">Tudo o que foi lançado, do mais recente para o mais antigo.
+      O número é a ordem em que você contou.</p>
+    <input type="text" id="busca-historico" placeholder="Buscar produto…" autocomplete="off"/>
+    <div class="lista" id="lista-historico"></div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script src="local.js"></script>
+<script src="pwa.js"></script>
+<script src="contar.js"></script>
+</body>
+</html>
