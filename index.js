@@ -200,11 +200,16 @@ async function pedirExclusao(id) {
     loteParaExcluir = { id, ...r };
     $("excluir-alvo").innerHTML = cartaoDoLote(r);
     $("excluir-alvo-2").innerHTML = cartaoDoLote(r);
+    $("motivo-exclusao").value = "";
+    $("excluir-1-sim").disabled = true;
     $("modal-excluir-1").classList.add("aberto");
   } catch (e) { aviso(e.message); }
 }
 
 function abrirConfirmacaoFinal() {
+  if (!loteParaExcluir) return;
+  loteParaExcluir.motivo = $("motivo-exclusao").value;
+  if (!loteParaExcluir.motivo) { aviso("Escolha o motivo da exclusão"); return; }
   $("modal-excluir-1").classList.remove("aberto");
   $("modal-excluir-2").classList.add("aberto");
 
@@ -227,7 +232,10 @@ async function excluirDeVez() {
   const b = $("excluir-2-sim");
   b.disabled = true; b.textContent = "Excluindo…";
   try {
-    await api(`lote?id=eq.${loteParaExcluir.id}`, { method: "DELETE" });
+    await rpc("excluir_lote", {
+      p_lote: loteParaExcluir.id,
+      p_motivo: loteParaExcluir.motivo,
+    });
     aviso("Inventário excluído", "ok");
     fechaModais();
     carregarLotes();
@@ -237,6 +245,9 @@ async function excluirDeVez() {
   }
 }
 
+$("motivo-exclusao").addEventListener("change", (e) => {
+  $("excluir-1-sim").disabled = !e.target.value;
+});
 $("excluir-1-nao").addEventListener("click", fechaModais);
 $("excluir-1-sim").addEventListener("click", abrirConfirmacaoFinal);
 $("excluir-2-nao").addEventListener("click", fechaModais);

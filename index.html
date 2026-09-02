@@ -84,9 +84,18 @@
       não pode ser recuperado por ninguém — nem por mim, nem pelo auditor.</span>
     </div>
     <div id="excluir-alvo"></div>
+    <div class="campo">
+      <label for="motivo-exclusao">Motivo da exclusão</label>
+      <select id="motivo-exclusao">
+        <option value="">Selecione…</option>
+        <option value="teste">Teste</option>
+        <option value="erro de contagem">Erro de contagem</option>
+        <option value="estoque incorreto">Estoque incorreto</option>
+      </select>
+    </div>
     <div class="linha-botoes">
       <button class="btn btn--2" id="excluir-1-nao">Cancelar</button>
-      <button class="btn btn--perigo" id="excluir-1-sim">Continuar</button>
+      <button class="btn btn--perigo" id="excluir-1-sim" disabled>Continuar</button>
     </div>
   </div>
 </div>
