@@ -74,6 +74,41 @@
 
 </main>
 
+<!-- Exclusao: primeiro aviso -->
+<div class="fundo-modal" id="modal-excluir-1">
+  <div class="modal">
+    <div class="modal-topo"><h2>Excluir inventário</h2></div>
+    <div class="nota nota--erro">
+      <b>Isto não tem volta.</b>
+      <span>Não existe lixeira, não existe desfazer. O que for apagado aqui
+      não pode ser recuperado por ninguém — nem por mim, nem pelo auditor.</span>
+    </div>
+    <div id="excluir-alvo"></div>
+    <div class="linha-botoes">
+      <button class="btn btn--2" id="excluir-1-nao">Cancelar</button>
+      <button class="btn btn--perigo" id="excluir-1-sim">Continuar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Exclusao: confirmacao final -->
+<div class="fundo-modal" id="modal-excluir-2">
+  <div class="modal">
+    <div class="modal-topo"><h2>Confirmação final</h2></div>
+    <p>Você está prestes a apagar definitivamente:</p>
+    <div id="excluir-alvo-2"></div>
+    <div class="nota nota--erro">
+      <b>Última chance de desistir.</b>
+      <span>Ao confirmar, o inventário e todas as contagens dele somem na hora.</span>
+    </div>
+    <!-- Botoes trocados de lado de proposito: evita confirmar no automatico -->
+    <div class="linha-botoes">
+      <button class="btn btn--perigo" id="excluir-2-sim" disabled>Aguarde…</button>
+      <button class="btn btn--2" id="excluir-2-nao">Não, manter o inventário</button>
+    </div>
+  </div>
+</div>
+
 <script src="config.js"></script>
 <script src="api.js"></script>
 <script src="pwa.js"></script>

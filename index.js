@@ -145,6 +145,10 @@ async function carregarLotes() {
           ${fechado ? "" : `<button class="btn" data-contar="${l.id}">Contar</button>`}
           <button class="btn btn--2" data-div="${l.id}">
             ${fechado ? "Ver divergências" : "Fechar e conferir"}</button>
+          ${fechado ? `<button class="btn btn--2" data-excluir="${l.id}"
+             style="flex:0 0 auto;min-width:0;color:var(--falta)" title="Excluir inventário">
+             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M5 6l1-3h12l1 3"/></svg>
+           </button>` : ""}
         </div>`;
       alvo.appendChild(d);
     }
@@ -153,6 +157,8 @@ async function carregarLotes() {
         sessionStorage.setItem("r400_lote", b.dataset.contar);
         location.href = "contar.html";
       }));
+    alvo.querySelectorAll("[data-excluir]").forEach((b) =>
+      b.addEventListener("click", () => pedirExclusao(b.dataset.excluir)));
     alvo.querySelectorAll("[data-div]").forEach((b) =>
       b.addEventListener("click", () => {
         sessionStorage.setItem("r400_lote", b.dataset.div);
@@ -162,5 +168,80 @@ async function carregarLotes() {
     alvo.innerHTML = `<div class="nota nota--erro">Não foi possível carregar: ${e.message}</div>`;
   }
 }
+
+/* ---------- excluir inventário ---------- */
+/* Duas confirmações de propósito. A primeira explica o que some,
+   a segunda existe só para quebrar o piloto automático: os botões
+   trocam de lado e o de excluir só libera depois de 3 segundos. */
+let loteParaExcluir = null;
+let contagemRegressiva = null;
+
+const fechaModais = () => {
+  $("modal-excluir-1").classList.remove("aberto");
+  $("modal-excluir-2").classList.remove("aberto");
+  if (contagemRegressiva) { clearInterval(contagemRegressiva); contagemRegressiva = null; }
+  loteParaExcluir = null;
+};
+
+function cartaoDoLote(r) {
+  return `<div class="item">
+    <span class="item-desc">${r.nome}</span>
+    <span class="item-info">${r.loja || ""}${r.fechado_em ? " · fechado em " + dataHoraBR(r.fechado_em) : ""}</span>
+    <span class="fraco" style="margin-top:.3rem">
+      Vão sumir <b>${numeroBR(r.produtos)} produtos</b> e
+      <b>${numeroBR(r.contagens)} lançamento${r.contagens === 1 ? "" : "s"}</b> de contagem.</span>
+  </div>`;
+}
+
+async function pedirExclusao(id) {
+  try {
+    const [r] = await rpc("resumo_para_excluir", { p_lote: id });
+    if (!r) { aviso("Inventário não encontrado"); return; }
+    loteParaExcluir = { id, ...r };
+    $("excluir-alvo").innerHTML = cartaoDoLote(r);
+    $("excluir-alvo-2").innerHTML = cartaoDoLote(r);
+    $("modal-excluir-1").classList.add("aberto");
+  } catch (e) { aviso(e.message); }
+}
+
+function abrirConfirmacaoFinal() {
+  $("modal-excluir-1").classList.remove("aberto");
+  $("modal-excluir-2").classList.add("aberto");
+
+  const b = $("excluir-2-sim");
+  let resta = 3;
+  b.disabled = true;
+  b.textContent = `Aguarde… ${resta}`;
+  if (contagemRegressiva) clearInterval(contagemRegressiva);
+  contagemRegressiva = setInterval(() => {
+    resta -= 1;
+    if (resta > 0) { b.textContent = `Aguarde… ${resta}`; return; }
+    clearInterval(contagemRegressiva); contagemRegressiva = null;
+    b.disabled = false;
+    b.textContent = "Sim, excluir para sempre";
+  }, 1000);
+}
+
+async function excluirDeVez() {
+  if (!loteParaExcluir) return;
+  const b = $("excluir-2-sim");
+  b.disabled = true; b.textContent = "Excluindo…";
+  try {
+    await api(`lote?id=eq.${loteParaExcluir.id}`, { method: "DELETE" });
+    aviso("Inventário excluído", "ok");
+    fechaModais();
+    carregarLotes();
+  } catch (e) {
+    aviso("Não foi possível excluir: " + e.message);
+    b.disabled = false; b.textContent = "Sim, excluir para sempre";
+  }
+}
+
+$("excluir-1-nao").addEventListener("click", fechaModais);
+$("excluir-1-sim").addEventListener("click", abrirConfirmacaoFinal);
+$("excluir-2-nao").addEventListener("click", fechaModais);
+$("excluir-2-sim").addEventListener("click", excluirDeVez);
+["modal-excluir-1", "modal-excluir-2"].forEach((m) =>
+  $(m).addEventListener("click", (e) => { if (e.target === e.currentTarget) fechaModais(); }));
 
 iniciar();
