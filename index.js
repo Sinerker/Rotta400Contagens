@@ -119,7 +119,7 @@ async function carregarLotes() {
   alvo.innerHTML = `<p class="fraco">carregando…</p>`;
   try {
     const lotes = await api(
-      "lote?select=id,nome,status,retrato_em,criado_em,fechado_em,linhas_declaradas,loja(nome)" +
+      "lote?select=id,nome,status,retrato_em,criado_em,fechado_em,linhas_declaradas,origem_id,loja(nome)" +
       "&order=criado_em.desc&limit=40");
     if (!lotes.length) {
       alvo.innerHTML = `<p class="fraco">Nenhum inventário ainda. Toque em “Novo inventário”.</p>`;
@@ -138,8 +138,11 @@ async function carregarLotes() {
             <div class="fraco">${l.linhas_declaradas ?? "?"} produtos ·
               retrato ${dataHoraBR(l.retrato_em)}</div>
           </div>
-          <span class="selo ${fechado ? "selo--cinza" : "selo--sobra"}">
-            ${fechado ? "Fechado" : "Aberto"}</span>
+          <div style="display:flex;flex-direction:column;gap:.25rem;align-items:flex-end;flex-shrink:0">
+            <span class="selo ${fechado ? "selo--cinza" : "selo--sobra"}">
+              ${fechado ? "Fechado" : "Aberto"}</span>
+            ${l.origem_id ? `<span class="selo selo--ncad">Recontagem</span>` : ""}
+          </div>
         </div>
         <div class="linha-botoes">
           ${fechado ? "" : `<button class="btn" data-contar="${l.id}">Contar</button>`}
