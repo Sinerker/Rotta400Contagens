@@ -161,7 +161,7 @@ function aoEnter(e) {
 
   if (achados.length === 0) {
     if (/^\d+$/.test(v)) {
-      selecionarDesconhecido(v);           // vira Não Cadastrado, não beco sem saída
+      bloquearForaDoLote(v);
     } else {
       $("resultado").innerHTML = `<div class="nota nota--erro">Nenhum produto com esse nome neste inventário.</div>`;
       bip("erro"); focarCodigo();
@@ -220,26 +220,36 @@ function selecionar(a) {
   q.focus(); q.select();
 }
 
-function selecionarDesconhecido(ean) {
-  selecionado = { item: null, emb: 1, ean };
+// Produto que não está no inventário é BLOQUEADO.
+// Não importa se existe no cadastro: se não veio no relatório
+// colado, não entra na contagem. Numa recontagem, isso também
+// barra produto que existe no inventário original mas não foi
+// marcado para recontar.
+function bloquearForaDoLote(lido) {
+  selecionado = null;
   $("resultado").innerHTML = `
-    <div class="nota nota--alerta">
-      <b>Este código não está neste inventário.</b>
-      <span>Pode ser produto de outra categoria. Se quiser, conte assim mesmo —
-      ele sai como <b>Não Cadastrado</b> no relatório.</span>
+    <div class="nota nota--erro">
+      <b>Este produto não faz parte deste inventário.</b>
+      <span>Só é possível contar os produtos do relatório de estoque que abriu
+      esta contagem. Confira se você bipou o produto certo.</span>
+      <span class="fraco" style="font-family:ui-monospace,monospace;margin-top:.2rem">
+        lido: ${lido}</span>
     </div>`;
   bip("erro");
-  $("conversao").classList.add("oculto");
-  $("jacontado").classList.add("oculto");
-  $("caixa-qtd").style.display = "flex";
-  const q = $("quantidade");
-  q.value = $("qtde1").checked ? "1" : "";
-  q.focus(); q.select();
+  $("caixa-qtd").style.display = "none";
+  $("quantidade").value = "";
+  focarCodigo();
 }
 
 /* ---------- lançar ---------- */
 async function lancar() {
   if (!selecionado) return;
+  // cinto e suspensório: o banco também recusa, mas aqui a mensagem é clara
+  if (!selecionado.item || !porSeq.has(String(selecionado.item.seq))) {
+    aviso("Este produto não faz parte deste inventário");
+    bip("erro");
+    return;
+  }
   const bruto = $("quantidade").value.trim();
   const qtd = bruto === "" ? NaN : Number(bruto);
   if (Number.isNaN(qtd) || Math.abs(qtd) > 999999) { aviso("Quantidade inválida"); bip("erro"); return; }
