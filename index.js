@@ -182,6 +182,7 @@ let contagemRegressiva = null;
 const fechaModais = () => {
   $("modal-excluir-1").classList.remove("aberto");
   $("modal-excluir-2").classList.remove("aberto");
+  $("modal-excluir-vazio").classList.remove("aberto");
   if (contagemRegressiva) { clearInterval(contagemRegressiva); contagemRegressiva = null; }
   loteParaExcluir = null;
 };
@@ -201,6 +202,17 @@ async function pedirExclusao(id) {
     const [r] = await rpc("resumo_para_excluir", { p_lote: id });
     if (!r) { aviso("Inventário não encontrado"); return; }
     loteParaExcluir = { id, ...r };
+
+    // Fechado e sem nenhuma contagem: não há resultado a preservar.
+    // Uma confirmação só, sem motivo e sem aviso por e-mail.
+    if (Number(r.contagens) === 0) {
+      $("excluir-alvo-vazio").innerHTML = cartaoDoLote(r);
+      $("excluir-vazio-sim").disabled = false;
+      $("excluir-vazio-sim").textContent = "Excluir";
+      $("modal-excluir-vazio").classList.add("aberto");
+      return;
+    }
+
     $("excluir-alvo").innerHTML = cartaoDoLote(r);
     $("excluir-alvo-2").innerHTML = cartaoDoLote(r);
     $("motivo-exclusao").value = "";
@@ -248,6 +260,21 @@ async function excluirDeVez() {
   }
 }
 
+async function excluirVazio() {
+  if (!loteParaExcluir) return;
+  const b = $("excluir-vazio-sim");
+  b.disabled = true; b.textContent = "Excluindo…";
+  try {
+    await rpc("excluir_lote_vazio", { p_lote: loteParaExcluir.id });
+    aviso("Inventário excluído", "ok");
+    fechaModais();
+    carregarLotes();
+  } catch (e) {
+    aviso("Não foi possível excluir: " + e.message);
+    b.disabled = false; b.textContent = "Excluir";
+  }
+}
+
 $("motivo-exclusao").addEventListener("change", (e) => {
   $("excluir-1-sim").disabled = !e.target.value;
 });
@@ -255,7 +282,9 @@ $("excluir-1-nao").addEventListener("click", fechaModais);
 $("excluir-1-sim").addEventListener("click", abrirConfirmacaoFinal);
 $("excluir-2-nao").addEventListener("click", fechaModais);
 $("excluir-2-sim").addEventListener("click", excluirDeVez);
-["modal-excluir-1", "modal-excluir-2"].forEach((m) =>
+$("excluir-vazio-nao").addEventListener("click", fechaModais);
+$("excluir-vazio-sim").addEventListener("click", excluirVazio);
+["modal-excluir-1", "modal-excluir-2", "modal-excluir-vazio"].forEach((m) =>
   $(m).addEventListener("click", (e) => { if (e.target === e.currentTarget) fechaModais(); }));
 
 iniciar();
