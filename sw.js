@@ -10,7 +10,7 @@
    Elas vão direto para a rede — dado de contagem em
    cache seria mentira.
    ============================================= */
-const VERSAO = "v1";
+const VERSAO = "v4";
 const CACHE = `contagens-${VERSAO}`;
 
 const ESQUELETO = [

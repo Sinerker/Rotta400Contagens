@@ -48,7 +48,7 @@ O auditor entra pelo link "Sou o auditor", digitando o e-mail direto.
 | `contar.html` / `contar.js` | Tela do coletor |
 | `local.js` | Banco do aparelho (IndexedDB) e fila de envio |
 | `divergencias.html` / `divergencias.js` | Fechamento, tabela e Excel |
-| `cadastro.html` / `cadastro.js` | Carga semanal do CSV e vínculo de acessos (só auditor) |
+| `cadastro.html` / `cadastro.js` | Situação do cadastro, lojas e vínculo de acessos (só auditor) |
 | `api.js` | Login e chamadas ao banco, sem biblioteca externa |
 | `sw.js` | Service Worker — faz o app abrir sem internet |
 
@@ -58,7 +58,13 @@ Supabase, projeto `Rotta400Contagens`. Sete tabelas com RLS:
 cada loja só enxerga o que é dela. O auditor enxerga tudo.
 
 Funções: `pacote_lote`, `divergencia_lote`, `fechar_lote`,
-`limpar_cadastro`, `vincular_perfil`, `criar_loja`.
+`vincular_perfil`, `criar_loja`, `cadastro_situacao` e as `cadastro_sinc_*`
+(a chegada do cadastro vindo do Contagens).
+
+**O cadastro de produtos não é carregado aqui.** Ele é carregado no app
+Contagens, a partir dos relatórios do sistema, e chega pronto no fim de cada
+carga: em blocos, para uma tabela de espera, trocado de uma vez só no fim. Se
+a transferência parar no meio, o cadastro daqui continua inteiro.
 
 ## Publicar
 

@@ -19,20 +19,14 @@
 <main>
 
   <section class="caixa">
-    <span class="rotulo">Situação atual</span>
+    <span class="rotulo">Cadastro de produtos</span>
     <div id="atual" class="fraco">verificando…</div>
-  </section>
-
-  <section class="caixa">
-    <span class="rotulo">Carga semanal</span>
-    <p class="fraco">Escolha o arquivo <b>embalagens com categorias.csv</b>.
-      Ele é lido aqui no navegador e enviado em blocos — o arquivo inteiro nunca
-      trafega de uma vez. Pode demorar alguns minutos.</p>
-    <input type="file" id="arquivo" accept=".csv,text/csv"/>
-    <div id="previa" class="oculto"></div>
-    <button class="btn btn--bloco btn--gg" id="btn-subir" disabled>Substituir o cadastro</button>
-    <div class="barra oculto" id="cx-barra"><i id="barra" style="width:0%"></i></div>
-    <div id="andamento" class="fraco"></div>
+    <div class="nota nota--info">
+      <b>O cadastro vem do Contagens.</b>
+      <span>Não se carrega arquivo aqui. Você carrega os relatórios do sistema no
+      Contagens (o app do supermercado) e, no fim da carga, ele manda o cadastro
+      para cá sozinho. Um lugar só para atualizar.</span>
+    </div>
   </section>
 
   <section class="caixa">
