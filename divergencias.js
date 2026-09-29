@@ -89,7 +89,15 @@ function desenhar() {
     ? visiveis.map((l) => {
         const r = ROTULOS[l.situacao];
         const d = Number(l.diferenca || 0);
+        // Produto sem código (Não Cadastrado) não pode ser recontado:
+        // ele não existe no relatório de estoque.
+        const podeRecontar = !!l.seqproduto;
         return `<tr class="l-${l.situacao}">
+          <td>${podeRecontar
+            ? `<input type="checkbox" class="marca" data-seq="${l.seqproduto}"
+                 ${selecionados.has(String(l.seqproduto)) ? "checked" : ""}
+                 style="width:20px;height:20px">`
+            : ""}</td>
           <td><span class="selo ${r.cls}">${r.txt}</span></td>
           <td class="num">${l.seqproduto ?? "—"}</td>
           <td>${l.descricao}</td>
@@ -99,7 +107,45 @@ function desenhar() {
             ${d > 0 ? "+" : ""}${numeroBR(d)}</td>
         </tr>`;
       }).join("")
-    : `<tr><td colspan="6" class="fraco" style="padding:1.2rem">Nenhuma divergência. Tudo bateu.</td></tr>`;
+    : `<tr><td colspan="7" class="fraco" style="padding:1.2rem">Nenhuma divergência. Tudo bateu.</td></tr>`;
+
+  $("corpo").querySelectorAll(".marca").forEach((c) =>
+    c.addEventListener("change", () => {
+      if (c.checked) selecionados.add(c.dataset.seq);
+      else selecionados.delete(c.dataset.seq);
+      atualizarBotaoRecontar();
+    }));
+  atualizarBotaoRecontar();
+}
+
+/* ---------- recontagem ---------- */
+const selecionados = new Set();
+
+function atualizarBotaoRecontar() {
+  const n = selecionados.size;
+  $("btn-recontar").disabled = n === 0;
+  $("btn-recontar").textContent = n === 0
+    ? "Recontar selecionados"
+    : `Recontar ${n} produto${n === 1 ? "" : "s"}`;
+}
+
+function marcarTodosDivergentes() {
+  selecionados.clear();
+  linhas.filter((l) => l.situacao !== "ok" && l.seqproduto)
+        .forEach((l) => selecionados.add(String(l.seqproduto)));
+  desenhar();
+}
+
+function limparSelecao() { selecionados.clear(); desenhar(); }
+
+function irParaRecontagem() {
+  if (!selecionados.size) return;
+  sessionStorage.setItem("r400_recontagem", JSON.stringify({
+    origemId: lote.id,
+    origemNome: lote.nome,
+    seqs: [...selecionados],
+  }));
+  location.href = "importar.html";
 }
 
 /* ---------- Excel ---------- */
@@ -182,6 +228,9 @@ function carregarExcelJS() {
 }
 
 $("btn-gerar").addEventListener("click", gerar);
+$("btn-marcar-todos").addEventListener("click", marcarTodosDivergentes);
+$("btn-desmarcar").addEventListener("click", limparSelecao);
+$("btn-recontar").addEventListener("click", irParaRecontagem);
 $("btn-excel").addEventListener("click", baixarExcel);
 $("btn-tudo").addEventListener("click", () => {
   mostrarTudo = !mostrarTudo;

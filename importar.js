@@ -7,6 +7,14 @@ if (!exigirLogin()) throw new Error("sem login");
 
 let analise = null;
 
+/* Recontagem: veio da tela de divergências com os produtos marcados.
+   O gerente cola o relatório INTEIRO e novo; o sistema aproveita só
+   os produtos escolhidos, com a quantidade de estoque atual. */
+const recontagem = (() => {
+  try { return JSON.parse(sessionStorage.getItem("r400_recontagem") || "null"); }
+  catch { return null; }
+})();
+
 /* ---------- números no formato brasileiro ---------- */
 // "4.905,000" -> 4905    "389,000" -> 389
 function numBR(txt) {
@@ -106,6 +114,41 @@ async function conferir() {
       Provavelmente a cópia veio pela metade — selecione tudo de novo e cole outra vez.</span></div>`);
   }
 
+  /* --- recontagem: fica só com os produtos marcados --- */
+  let foraDaRecontagem = 0;
+  let selecionadosAusentes = [];
+  if (recontagem) {
+    const querem = new Set(recontagem.seqs.map(String));
+    const presentes = new Set(r.itens.map((i) => String(i.seq)));
+    selecionadosAusentes = recontagem.seqs.filter((sq) => !presentes.has(String(sq)));
+    const antes = r.itens.length;
+    r.itens = r.itens.filter((i) => querem.has(String(i.seq)));
+    foraDaRecontagem = antes - r.itens.length;
+    r.soma = r.itens.reduce((a, i) => a + i.qtd, 0);
+
+    if (r.itens.length === 0) {
+      alvo.innerHTML = `<div class="nota nota--erro">
+        <b>Nenhum dos produtos marcados apareceu neste relatório.</b>
+        <span>Confira se você tirou o relatório da mesma categoria da contagem anterior.</span></div>`;
+      b.disabled = false; b.textContent = "Conferir";
+      return;
+    }
+
+    notas.push(`<div class="nota nota--ok">
+      <b>${r.itens.length} de ${recontagem.seqs.length} produtos marcados vieram no relatório novo.</b>
+      <span>Os outros ${numeroBR(foraDaRecontagem)} produtos do relatório foram ignorados —
+      esta recontagem é só dos que você escolheu.</span></div>`);
+
+    if (selecionadosAusentes.length) {
+      notas.push(`<div class="nota nota--alerta">
+        <b>${selecionadosAusentes.length} produto${selecionadosAusentes.length === 1 ? "" : "s"}
+        que você marcou não veio${selecionadosAusentes.length === 1 ? "" : "ram"} no relatório novo.</b>
+        <span>Códigos: ${selecionadosAusentes.join(", ")}.
+        Pode ser que tenham saído da categoria ou zerado no sistema.
+        Eles ficam de fora desta recontagem.</span></div>`);
+    }
+  }
+
   /* --- casamento com o cadastro --- */
   let achados = new Map();
   try {
@@ -171,11 +214,12 @@ function sugerirNome(itens) {
   itens.forEach((i) => { const w = (i.desc.split(/\s+/)[0] || ""); if (w.length > 2) cont[w] = (cont[w] || 0) + 1; });
   const cat = Object.entries(cont).sort((a, b) => b[1] - a[1])[0]?.[0] || "INVENTARIO";
   const d = new Date();
+  const prefixo = recontagem ? "RECONTAGEM " : "";
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const hh = String(d.getHours()).padStart(2, "0");
   const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${cat} · ${loja} · ${dd}/${mm} ${hh}:${mi}`;
+  return `${prefixo}${cat} · ${loja} · ${dd}/${mm} ${hh}:${mi}`;
 }
 
 function abrirSemEan(lista) {
@@ -203,8 +247,9 @@ async function criar() {
         loja_id: p.loja_id,
         nome: $("nome").value.trim() || sugerirNome(analise.itens),
         retrato_em: new Date().toISOString(),
-        linhas_declaradas: analise.linhasDeclaradas ?? analise.itens.length,
-        total_declarado: analise.totalDeclarado ?? analise.soma,
+        linhas_declaradas: analise.itens.length,
+        total_declarado: analise.soma,
+        origem_id: recontagem ? recontagem.origemId : null,
       }),
     });
 
@@ -217,7 +262,8 @@ async function criar() {
     }
 
     sessionStorage.setItem("r400_lote", lote.id);
-    aviso("Inventário criado. Abra no coletor.", "ok");
+    sessionStorage.removeItem("r400_recontagem");
+    aviso(recontagem ? "Recontagem criada. Abra no coletor." : "Inventário criado. Abra no coletor.", "ok");
     setTimeout(() => { location.href = "index.html"; }, 900);
   } catch (e) {
     aviso(e.message);
@@ -274,5 +320,21 @@ $("btn-criar").addEventListener("click", criar);
 (async () => {
   try { const p = (await carregarPerfil()) || perfil(); $("sub").textContent = p?.loja?.nome || "—"; }
   catch { $("sub").textContent = perfil()?.loja?.nome || "—"; }
+
+  if (recontagem) {
+    $("titulo").firstChild.textContent = "Recontagem";
+    const av = $("aviso-recontagem");
+    av.classList.remove("oculto");
+    av.innerHTML = `<b>Recontagem de ${recontagem.seqs.length} produto${
+      recontagem.seqs.length === 1 ? "" : "s"} do inventário “${recontagem.origemNome}”.</b>
+      <span>Tire o relatório de estoque <b>agora</b> e cole inteiro, como sempre.
+      O que foi vendido desde a primeira contagem já vai estar descontado.
+      Deste relatório o sistema vai aproveitar só os produtos que você marcou.
+      <a href="index.html" id="cancelar-recontagem">Cancelar recontagem</a></span>`;
+    $("cancelar-recontagem").addEventListener("click", () => {
+      sessionStorage.removeItem("r400_recontagem");
+    });
+  }
+
   $("colagem").focus();
 })();

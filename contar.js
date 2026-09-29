@@ -17,6 +17,7 @@ let porSeq = new Map();       // seq -> item
 let contagens = [];           // tudo o que este aparelho conhece
 let selecionado = null;       // { item, emb, ean }
 let ultimo = null;
+let editandoId = null;        // id do lançamento em edição no "Já contei"
 const dispositivo = obterDispositivo();
 
 function obterDispositivo() {
@@ -69,13 +70,27 @@ async function carregar() {
   }
 
   contagens = await contagensDoLote(loteId);
-  $("lote-nome").textContent = pacote.lote.nome;
+  mostrarNomeLote(pacote.lote.nome);
   if (pacote.lote.status === "fechado") {
     $("aviso-fechado").classList.remove("oculto");
     $("codigo").disabled = true;
   }
   atualizarCabecalho();
   focarCodigo();
+  enviar(true);            // já tinha internet ao abrir? manda o que ficou pendente de antes
+}
+
+function loteFechado() { return pacote?.lote?.status === "fechado"; }
+
+// O <span id="lote-sub"> mora DENTRO do <h1 id="lote-nome">. Usar textContent
+// no h1 apagava o span, e aí todo atualizarCabecalho() quebrava (null.textContent),
+// derrubando o que viesse depois: redesenho do "Já contei", envio automático etc.
+// Aqui troca só o texto do nome e deixa o span vivo.
+function mostrarNomeLote(nome) {
+  const h1 = $("lote-nome");
+  const t = h1.firstChild;
+  if (t && t.nodeType === Node.TEXT_NODE) t.nodeValue = nome;
+  else h1.insertBefore(document.createTextNode(nome), h1.firstChild);
 }
 
 function montarIndices() {
@@ -161,7 +176,7 @@ function aoEnter(e) {
 
   if (achados.length === 0) {
     if (/^\d+$/.test(v)) {
-      selecionarDesconhecido(v);           // vira Não Cadastrado, não beco sem saída
+      bloquearForaDoLote(v);
     } else {
       $("resultado").innerHTML = `<div class="nota nota--erro">Nenhum produto com esse nome neste inventário.</div>`;
       bip("erro"); focarCodigo();
@@ -220,26 +235,36 @@ function selecionar(a) {
   q.focus(); q.select();
 }
 
-function selecionarDesconhecido(ean) {
-  selecionado = { item: null, emb: 1, ean };
+// Produto que não está no inventário é BLOQUEADO.
+// Não importa se existe no cadastro: se não veio no relatório
+// colado, não entra na contagem. Numa recontagem, isso também
+// barra produto que existe no inventário original mas não foi
+// marcado para recontar.
+function bloquearForaDoLote(lido) {
+  selecionado = null;
   $("resultado").innerHTML = `
-    <div class="nota nota--alerta">
-      <b>Este código não está neste inventário.</b>
-      <span>Pode ser produto de outra categoria. Se quiser, conte assim mesmo —
-      ele sai como <b>Não Cadastrado</b> no relatório.</span>
+    <div class="nota nota--erro">
+      <b>Este produto não faz parte deste inventário.</b>
+      <span>Só é possível contar os produtos do relatório de estoque que abriu
+      esta contagem. Confira se você bipou o produto certo.</span>
+      <span class="fraco" style="font-family:ui-monospace,monospace;margin-top:.2rem">
+        lido: ${lido}</span>
     </div>`;
   bip("erro");
-  $("conversao").classList.add("oculto");
-  $("jacontado").classList.add("oculto");
-  $("caixa-qtd").style.display = "flex";
-  const q = $("quantidade");
-  q.value = $("qtde1").checked ? "1" : "";
-  q.focus(); q.select();
+  $("caixa-qtd").style.display = "none";
+  $("quantidade").value = "";
+  focarCodigo();
 }
 
 /* ---------- lançar ---------- */
 async function lancar() {
   if (!selecionado) return;
+  // cinto e suspensório: o banco também recusa, mas aqui a mensagem é clara
+  if (!selecionado.item || !porSeq.has(String(selecionado.item.seq))) {
+    aviso("Este produto não faz parte deste inventário");
+    bip("erro");
+    return;
+  }
   const bruto = $("quantidade").value.trim();
   const qtd = bruto === "" ? NaN : Number(bruto);
   if (Number.isNaN(qtd) || Math.abs(qtd) > 999999) { aviso("Quantidade inválida"); bip("erro"); return; }
@@ -340,6 +365,7 @@ async function enviar(silencioso = false) {
   }
 }
 window.addEventListener("online", () => enviar(true));
+setInterval(() => enviar(true), 30000);   // rede instável: reforça o envio de tempos em tempos
 
 /* ---------- faltam contar ---------- */
 function abrirFaltam() {
@@ -363,9 +389,11 @@ function abrirFaltam() {
 /* ---------- já contei ---------- */
 // Ordem de contagem = ordem em que foi lançado. O número mostra isso.
 function abrirHistorico() {
+  editandoId = null;
   const desenhar = (termo) => {
     const t = semAcento(termo || "");
     const canceladas = new Set(contagens.filter((c) => c.cancela_id).map((c) => c.cancela_id));
+    const travado = loteFechado();
 
     const registros = contagens
       .filter((c) => !c.cancela_id)
@@ -387,6 +415,27 @@ function abrirHistorico() {
           const un = Number(c.quantidade) * emb;
           const hora = new Date(c.criado_em).toLocaleTimeString("pt-BR",
             { hour: "2-digit", minute: "2-digit" });
+
+          if (!c.morta && !travado && c.id === editandoId) {
+            return `<div class="hist hist--editando">
+              <span class="hist-n">${c.ordem}</span>
+              <span class="hist-corpo">
+                <span class="item-desc">${nome}</span>
+                <span class="item-info">quantidade${emb !== 1 ? ` · embalagem × ${numeroBR(emb)}` : ""}</span>
+              </span>
+              <span class="hist-form">
+                <input type="number" step="any" inputmode="decimal" class="hist-input"
+                       id="edit-valor-${c.id}" value="${c.quantidade}"/>
+              </span>
+              <button class="hist-acao hist-acao--ok" data-salvar="${c.id}" aria-label="Salvar">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button class="hist-acao hist-acao--cancelar" data-cancelar-edicao="${c.id}" aria-label="Cancelar">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>`;
+          }
+
           return `<div class="hist${c.morta ? " hist--morta" : ""}">
             <span class="hist-n">${c.ordem}</span>
             <span class="hist-corpo">
@@ -396,7 +445,10 @@ function abrirHistorico() {
                 c.enviada ? "" : " · não enviada"}${c.morta ? " · APAGADA" : ""}</span>
             </span>
             <span class="hist-qtd">${numeroBR(un)} UN</span>
-            ${c.morta ? "" : `<button class="hist-apagar" data-apagar="${c.id}" aria-label="Apagar">
+            ${c.morta || travado ? "" : `<button class="hist-editar" data-editar="${c.id}" aria-label="Editar">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            </button>
+            <button class="hist-apagar" data-apagar="${c.id}" aria-label="Apagar">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
             </button>`}
           </div>`;
@@ -405,6 +457,28 @@ function abrirHistorico() {
 
     $("lista-historico").querySelectorAll("[data-apagar]").forEach((b) =>
       b.addEventListener("click", () => apagarLancamento(b.dataset.apagar, () => desenhar($("busca-historico").value))));
+
+    $("lista-historico").querySelectorAll("[data-editar]").forEach((b) =>
+      b.addEventListener("click", () => {
+        editandoId = b.dataset.editar;
+        desenhar($("busca-historico").value);
+        const input = $(`edit-valor-${editandoId}`);
+        if (input) { input.focus(); input.select(); }
+      }));
+
+    $("lista-historico").querySelectorAll("[data-cancelar-edicao]").forEach((b) =>
+      b.addEventListener("click", () => { editandoId = null; desenhar($("busca-historico").value); }));
+
+    $("lista-historico").querySelectorAll("[data-salvar]").forEach((b) => {
+      const id = b.dataset.salvar;
+      const confirmar = () => salvarEdicao(id, () => desenhar($("busca-historico").value));
+      b.addEventListener("click", confirmar);
+      const input = $(`edit-valor-${id}`);
+      if (input) input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); confirmar(); }
+        if (e.key === "Escape") { editandoId = null; desenhar($("busca-historico").value); }
+      });
+    });
   };
 
   desenhar("");
@@ -416,23 +490,68 @@ function abrirHistorico() {
 // Apagar um lançamento qualquer, não só o último.
 // Se ainda não subiu, some de vez. Se já subiu, entra um cancelamento
 // — a trilha continua inteira para a auditoria.
+// aoTerminar roda sempre (sucesso ou erro), pra tela nunca ficar desatualizada.
 async function apagarLancamento(id, aoTerminar) {
   const alvo = contagens.find((c) => c.id === id);
   if (!alvo) return;
-  if (!alvo.enviada) {
-    await apagarContagem(alvo.id);
-    contagens = contagens.filter((c) => c.id !== alvo.id);
-  } else {
-    const cancel = { ...alvo, id: novoId(), cancela_id: alvo.id,
-                     criado_em: new Date().toISOString(), enviada: 0 };
-    await gravarContagem(cancel);
-    contagens.push(cancel);
+  try {
+    if (!alvo.enviada) {
+      await apagarContagem(alvo.id);
+      contagens = contagens.filter((c) => c.id !== alvo.id);
+    } else {
+      const cancel = { ...alvo, id: novoId(), cancela_id: alvo.id,
+                       criado_em: new Date().toISOString(), enviada: 0 };
+      await gravarContagem(cancel);
+      contagens.push(cancel);
+    }
+    if (ultimo?.id === id) { ultimo = null; $("caixa-ultimo").classList.add("oculto"); }
+    if (editandoId === id) editandoId = null;
+    aviso("Lançamento apagado", "ok");
+  } catch (e) {
+    aviso("Não consegui apagar: " + e.message);
+  } finally {
+    atualizarCabecalho();
+    enviar(true);
+    aoTerminar?.();
   }
-  if (ultimo?.id === id) { ultimo = null; $("caixa-ultimo").classList.add("oculto"); }
-  aviso("Lançamento apagado", "ok");
-  atualizarCabecalho();
-  enviar(true);
+}
+
+// Editar a quantidade de um lançamento já feito. Mantém o mesmo id
+// e volta a marcar como "não enviada" pra corrigir também no servidor
+// (o envio usa upsert por id, então isso substitui o valor lá, sem duplicar).
+async function salvarEdicao(id, aoTerminar) {
+  const input = $(`edit-valor-${id}`);
+  if (!input) return;
+  const bruto = input.value.trim();
+  const nova = bruto === "" ? NaN : Number(bruto);
+  if (Number.isNaN(nova) || nova === 0 || Math.abs(nova) > 999999) {
+    aviso("Quantidade inválida. Para remover o lançamento, use a lixeira.");
+    bip("erro");
+    input.focus(); input.select();
+    return;
+  }
+  await editarLancamento(id, nova);
+  editandoId = null;
   aoTerminar?.();
+}
+
+async function editarLancamento(id, novaQtd) {
+  const alvo = contagens.find((c) => c.id === id);
+  if (!alvo) return;
+  try {
+    const atualizado = { ...alvo, quantidade: novaQtd, enviada: 0 };
+    await gravarContagem(atualizado);
+    contagens = contagens.map((c) => (c.id === id ? atualizado : c));
+    if (ultimo?.id === id) ultimo = atualizado;
+    aviso("Contagem atualizada", "ok");
+    bip("ok");
+  } catch (e) {
+    aviso("Não consegui salvar a alteração: " + e.message);
+    bip("erro");
+  } finally {
+    atualizarCabecalho();
+    enviar(true);
+  }
 }
 
 /* ---------- ligações ---------- */

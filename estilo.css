@@ -210,8 +210,21 @@ main.tem-barra-baixo{padding-bottom:5.5rem}
 .hist-apagar{background:none; border:0; color:var(--falta); cursor:pointer;
   padding:.2rem; flex-shrink:0; border-radius:7px}
 .hist-apagar:active{background:var(--linha)}
+.hist-editar{background:none; border:0; color:var(--azul); cursor:pointer;
+  padding:.2rem; flex-shrink:0; border-radius:7px}
+.hist-editar:active{background:var(--linha)}
 .hist--morta{opacity:.45}
 .hist--morta .hist-qtd{text-decoration:line-through}
+
+/* edição inline no histórico */
+.hist--editando{background:var(--azul-claro); border-color:var(--azul)}
+.hist-form{flex:1; min-width:0}
+.hist-input{font-size:1.05rem; font-weight:600; padding:.4rem .55rem}
+.hist-acao{background:none; border:0; cursor:pointer; padding:.35rem;
+  flex-shrink:0; border-radius:7px}
+.hist-acao--ok{color:var(--sobra)}
+.hist-acao--cancelar{color:var(--fraco)}
+.hist-acao:active{background:var(--linha)}
 
 /* telas estreitas de coletor */
 @media (max-width:400px){

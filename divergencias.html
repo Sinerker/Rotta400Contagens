@@ -37,9 +37,25 @@
       <button class="btn" id="btn-excel">Baixar Excel</button>
       <button class="btn btn--2" id="btn-tudo">Mostrar também os que bateram</button>
     </div>
+
+    <div class="caixa" id="caixa-recontar">
+      <span class="rotulo">Recontar</span>
+      <p class="fraco">Marque os produtos que quer conferir de novo. Na próxima tela você vai
+        colar um relatório de estoque <b>novo</b> — o que foi vendido desde a primeira
+        contagem já estará descontado.</p>
+      <div class="linha-botoes">
+        <button class="btn btn--2" id="btn-marcar-todos">Marcar todos os divergentes</button>
+        <button class="btn btn--2" id="btn-desmarcar">Limpar seleção</button>
+      </div>
+      <button class="btn btn--bloco btn--gg" id="btn-recontar" disabled>
+        Recontar selecionados
+      </button>
+    </div>
+
     <div class="tabela-rolagem">
       <table>
         <thead><tr>
+          <th style="width:34px"></th>
           <th>Situação</th><th>Código</th><th>Produto</th>
           <th style="text-align:right">Sistema</th>
           <th style="text-align:right">Contado</th>
