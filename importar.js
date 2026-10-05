@@ -15,6 +15,14 @@ const recontagem = (() => {
   catch { return null; }
 })();
 
+/* Auditor criando no lugar de uma loja: a loja vem escolhida na tela anterior.
+   Numa recontagem a loja e sempre a do inventario de origem. */
+const lojaAlvo = (() => {
+  if (recontagem?.lojaId) return { id: recontagem.lojaId, nome: recontagem.lojaNome || "" };
+  try { return JSON.parse(sessionStorage.getItem("r400_loja_alvo") || "null"); }
+  catch { return null; }
+})();
+
 /* ---------- números no formato brasileiro ---------- */
 // "4.905,000" -> 4905    "389,000" -> 389
 function numBR(txt) {
@@ -265,7 +273,7 @@ async function conferir() {
 /* ---------- nome sugerido ---------- */
 function sugerirNome(itens) {
   const p = perfil();
-  const loja = p?.loja?.nome || "LOJA";
+  const loja = lojaAlvo?.nome || p?.loja?.nome || "LOJA";
   // primeira palavra mais comum das descrições, como pista da categoria
   const cont = {};
   itens.forEach((i) => { const w = (i.desc.split(/\s+/)[0] || ""); if (w.length > 2) cont[w] = (cont[w] || 0) + 1; });
@@ -297,11 +305,13 @@ async function criar() {
   b.disabled = true; b.textContent = "Criando…";
   try {
     const p = perfil();
+    const lojaId = lojaAlvo?.id || p.loja_id;
+    if (!lojaId) throw new Error("Nenhuma loja selecionada para este inventário.");
     const [lote] = await api("lote", {
       method: "POST",
       headers: { Prefer: "return=representation" },
       body: JSON.stringify({
-        loja_id: p.loja_id,
+        loja_id: lojaId,
         nome: $("nome").value.trim() || sugerirNome(analise.itens),
         retrato_em: new Date().toISOString(),
         linhas_declaradas: analise.itens.length,
@@ -320,6 +330,7 @@ async function criar() {
 
     sessionStorage.setItem("r400_lote", lote.id);
     sessionStorage.removeItem("r400_recontagem");
+    sessionStorage.removeItem("r400_loja_alvo");
     aviso(recontagem ? "Recontagem criada. Abra no coletor." : "Inventário criado. Abra no coletor.", "ok");
     setTimeout(() => { location.href = "index.html"; }, 900);
   } catch (e) {
@@ -375,8 +386,17 @@ $("btn-limpar").addEventListener("click", () => {
 $("btn-criar").addEventListener("click", criar);
 
 (async () => {
-  try { const p = (await carregarPerfil()) || perfil(); $("sub").textContent = p?.loja?.nome || "—"; }
-  catch { $("sub").textContent = perfil()?.loja?.nome || "—"; }
+  try { const p = (await carregarPerfil()) || perfil(); $("sub").textContent = lojaAlvo?.nome || p?.loja?.nome || "—"; }
+  catch { $("sub").textContent = lojaAlvo?.nome || perfil()?.loja?.nome || "—"; }
+
+  // Auditor criando para outra loja: deixa a loja na cara, para nao errar o alvo.
+  if (lojaAlvo && !recontagem) {
+    const av = $("aviso-loja-alvo");
+    av.classList.remove("oculto");
+    av.innerHTML = `<b>Este inventário vai ser criado para a loja ${lojaAlvo.nome}.</b>
+      <span>Confira a loja antes de criar — o inventário aparece para o gerente dela.
+      <a href="index.html">Trocar de loja</a></span>`;
+  }
 
   if (recontagem) {
     $("titulo").firstChild.textContent = "Recontagem";

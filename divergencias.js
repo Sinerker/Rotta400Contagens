@@ -143,6 +143,8 @@ function irParaRecontagem() {
   sessionStorage.setItem("r400_recontagem", JSON.stringify({
     origemId: lote.id,
     origemNome: lote.nome,
+    lojaId: lote.loja_id,
+    lojaNome: lote.loja?.nome || "",
     seqs: [...selecionados],
   }));
   location.href = "importar.html";

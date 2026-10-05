@@ -58,6 +58,25 @@
       <span>Peça para o auditor vincular o acesso antes de começar.</span>
     </div>
 
+    <!-- Filtros: so o auditor ve. O gerente nunca enxerga lote de outra loja. -->
+    <div class="caixa oculto" id="filtros-auditor">
+      <span class="rotulo">Filtrar inventários</span>
+      <div class="campo">
+        <label for="filtro-loja">Loja</label>
+        <select id="filtro-loja"><option value="">Todas as lojas</option></select>
+      </div>
+      <div class="campo">
+        <label for="filtro-status">Situação</label>
+        <select id="filtro-status">
+          <option value="">Abertos e fechados</option>
+          <option value="aberto">Só os abertos</option>
+          <option value="fechado">Só os fechados</option>
+        </select>
+      </div>
+      <span class="fraco oculto" id="aviso-escolha-loja">
+        Escolha uma loja acima para poder criar um inventário para ela.</span>
+    </div>
+
     <button class="btn btn--bloco btn--gg" id="btn-novo">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       Novo inventário

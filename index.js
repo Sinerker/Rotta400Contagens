@@ -16,6 +16,9 @@ function mostrar(qual) {
 // O e-mail é só o identificador interno do Supabase — ele nunca precisa vê-lo.
 const emailDaLoja = (codigo) => `loja${codigo}@rotta400.app`;
 let modoAuditor = false;
+let ehAuditor = false;        // o usuario logado e o auditor
+let lojasPorId = new Map();   // id -> loja, para o filtro do auditor
+let filtrosProntos = false;   // evita ligar os eventos do filtro duas vezes
 
 async function carregarLojas() {
   const sel = $("loja");
@@ -85,7 +88,18 @@ $("trocar-modo").addEventListener("click", trocarModo);
   $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") fazerLogin(); }));
 $("loja").addEventListener("keydown", (e) => { if (e.key === "Enter") $("senha").focus(); });
 $("btn-sair").addEventListener("click", sair);
-$("btn-novo").addEventListener("click", () => { location.href = "importar.html"; });
+$("btn-novo").addEventListener("click", () => {
+  // O auditor cria no lugar de uma loja: a loja do filtro vai junto.
+  if (ehAuditor) {
+    const id = $("filtro-loja").value;
+    if (!id) { aviso("Escolha uma loja no filtro antes de criar um inventário"); return; }
+    sessionStorage.setItem("r400_loja_alvo",
+      JSON.stringify({ id, nome: lojasPorId.get(id)?.nome || "" }));
+  } else {
+    sessionStorage.removeItem("r400_loja_alvo");
+  }
+  location.href = "importar.html";
+});
 
 /* ---------- hub ---------- */
 async function iniciar() {
@@ -95,12 +109,15 @@ async function iniciar() {
   let p = perfil();
   try { p = (await carregarPerfil()) || p; } catch {}
 
-  $("sub").textContent = p?.loja?.nome || (p?.papel === "auditor" ? "Auditor" : "sem loja");
-  $("btn-cadastro").classList.toggle("oculto", p?.papel !== "auditor");
-  const semLoja = !p?.loja_id && p?.papel !== "auditor";
+  ehAuditor = p?.papel === "auditor";
+  $("sub").textContent = p?.loja?.nome || (ehAuditor ? "Auditor" : "sem loja");
+  $("btn-cadastro").classList.toggle("oculto", !ehAuditor);
+  $("filtros-auditor").classList.toggle("oculto", !ehAuditor);
+  const semLoja = !p?.loja_id && !ehAuditor;
   $("sem-perfil").classList.toggle("oculto", !semLoja);
   $("btn-novo").disabled = semLoja;
 
+  if (ehAuditor) await montarFiltros();
   carregarCadastroInfo();
   carregarLotes();
 }
@@ -114,18 +131,68 @@ async function carregarCadastroInfo() {
   } catch { $("info-cadastro").textContent = "não foi possível verificar"; }
 }
 
+/* ---------- filtros do auditor ----------
+   So o auditor enxerga lote de outra loja — a regra do banco garante isso,
+   o filtro aqui e so conveniencia. A escolha fica guardada no aparelho. */
+async function montarFiltros() {
+  const sel = $("filtro-loja");
+  let lojas = [];
+  try { lojas = await api("loja?select=id,codigo,nome&order=codigo"); } catch {}
+  lojasPorId = new Map(lojas.map((l) => [l.id, l]));
+
+  const salva = localStorage.getItem("r400_filtro_loja") || "";
+  sel.innerHTML = `<option value="">Todas as lojas</option>` +
+    lojas.map((l) => `<option value="${l.id}"${l.id === salva ? " selected" : ""}>${l.nome}</option>`).join("");
+  $("filtro-status").value = localStorage.getItem("r400_filtro_status") || "";
+
+  if (filtrosProntos) { atualizarNovo(); return; }
+  filtrosProntos = true;
+
+  sel.addEventListener("change", () => {
+    localStorage.setItem("r400_filtro_loja", sel.value);
+    atualizarNovo();
+    carregarLotes();
+  });
+  $("filtro-status").addEventListener("change", (e) => {
+    localStorage.setItem("r400_filtro_status", e.target.value);
+    carregarLotes();
+  });
+  atualizarNovo();
+}
+
+// Sem loja escolhida, o auditor nao tem para quem criar o inventario.
+function atualizarNovo() {
+  if (!ehAuditor) return;
+  const temLoja = !!$("filtro-loja").value;
+  $("btn-novo").disabled = !temLoja;
+  $("aviso-escolha-loja").classList.toggle("oculto", temLoja);
+}
+
 async function carregarLotes() {
   const alvo = $("lista-lotes");
   alvo.innerHTML = `<p class="fraco">carregando…</p>`;
+  const fLoja   = ehAuditor ? $("filtro-loja").value   : "";
+  const fStatus = ehAuditor ? $("filtro-status").value : "";
+  const limite  = ehAuditor && !fLoja ? 100 : 40;
+
+  let consulta = "lote?select=id,nome,status,retrato_em,criado_em,fechado_em," +
+                 "linhas_declaradas,origem_id,loja_id,loja(nome)";
+  if (fLoja)   consulta += `&loja_id=eq.${fLoja}`;
+  if (fStatus) consulta += `&status=eq.${fStatus}`;
+  consulta += `&order=criado_em.desc&limit=${limite}`;
+
   try {
-    const lotes = await api(
-      "lote?select=id,nome,status,retrato_em,criado_em,fechado_em,linhas_declaradas,origem_id,loja(nome)" +
-      "&order=criado_em.desc&limit=40");
+    const lotes = await api(consulta);
     if (!lotes.length) {
-      alvo.innerHTML = `<p class="fraco">Nenhum inventário ainda. Toque em “Novo inventário”.</p>`;
+      alvo.innerHTML = `<p class="fraco">${fLoja || fStatus
+        ? "Nenhum inventário com esses filtros."
+        : "Nenhum inventário ainda. Toque em “Novo inventário”."}</p>`;
       return;
     }
-    alvo.innerHTML = "";
+    // Sem filtro de loja o auditor precisa saber de quem e cada inventario.
+    alvo.innerHTML = lotes.length >= limite
+      ? `<p class="fraco">Mostrando os ${limite} mais recentes. Use os filtros para chegar nos outros.</p>`
+      : "";
     for (const l of lotes) {
       const fechado = l.status === "fechado";
       const d = document.createElement("div");
@@ -135,8 +202,8 @@ async function carregarLotes() {
         <div style="display:flex;align-items:flex-start;gap:.6rem">
           <div style="flex:1;min-width:0">
             <h3>${l.nome}</h3>
-            <div class="fraco">${l.linhas_declaradas ?? "?"} produtos ·
-              retrato ${dataHoraBR(l.retrato_em)}</div>
+            <div class="fraco">${ehAuditor && !fLoja && l.loja?.nome ? l.loja.nome + " · " : ""}${
+              l.linhas_declaradas ?? "?"} produtos · retrato ${dataHoraBR(l.retrato_em)}</div>
           </div>
           <div style="display:flex;flex-direction:column;gap:.25rem;align-items:flex-end;flex-shrink:0">
             <span class="selo ${fechado ? "selo--cinza" : "selo--sobra"}">
