@@ -23,26 +23,43 @@ function numBR(txt) {
   return Number(s.replace(/\./g, "").replace(",", "."));
 }
 
-/* ---------- leitura da colagem ---------- */
+/* ---------- leitura da colagem ----------
+   A colagem pode trazer MAIS DE UM relatório, um embaixo do outro.
+   Cada cabeçalho "Código Produto…" começa um relatório novo, e cada
+   relatório é conferido contra o próprio TOTAL. Um TOTAL que aparece
+   depois de produtos também marca o começo de outro relatório — assim
+   funciona mesmo quando o cabeçalho não vem na segunda colagem.
+
+   Código repetido não é somado: fica só a primeira aparição. */
 function lerColagem(texto) {
   const linhas = texto.split(/\r?\n/).filter((l) => l.trim() !== "");
-  const itens = [];
-  let totalDeclarado = null, linhasDeclaradas = null, cabecalho = false;
+  const blocos = [];
   const problemas = [];
+  let atual = null;
+
+  const abrirBloco = () => {
+    atual = { itens: [], linhasDeclaradas: null, totalDeclarado: null };
+    blocos.push(atual);
+    return atual;
+  };
+  const blocoVazio = () => atual && !atual.itens.length
+    && atual.linhasDeclaradas == null && atual.totalDeclarado == null;
 
   for (const linha of linhas) {
     const c = linha.split("\t");
     const cod = (c[0] || "").trim();
 
-    // linha de cabeçalho
-    if (/c[óo]digo/i.test(cod)) { cabecalho = true; continue; }
+    // linha de cabeçalho: começa um relatório
+    if (/c[óo]digo/i.test(cod)) { if (!blocoVazio()) abrirBloco(); continue; }
 
     // linha do TOTAL — vira conferência, não é descartada
     if (!cod) {
       const m = /TOTAL:\s*(\d+)\s*linhas/i.exec(linha);
-      if (m) linhasDeclaradas = Number(m[1]);
       const t = numBR(c[3]);
-      if (!Number.isNaN(t)) totalDeclarado = t;
+      if (!m && Number.isNaN(t)) continue;            // linha solta qualquer
+      if (!atual || atual.itens.length) abrirBloco(); // TOTAL depois de itens = outro relatório
+      if (m) atual.linhasDeclaradas = Number(m[1]);
+      if (!Number.isNaN(t)) atual.totalDeclarado = t;
       continue;
     }
 
@@ -51,7 +68,8 @@ function lerColagem(texto) {
     const qtd = numBR(c[3]);
     if (Number.isNaN(qtd)) { problemas.push(`quantidade ilegível no código ${cod}`); continue; }
 
-    itens.push({
+    if (!atual) abrirBloco();
+    atual.itens.push({
       seq: cod,
       desc: (c[1] || "").trim().toUpperCase(),
       emb: (c[2] || "").trim(),
@@ -59,19 +77,32 @@ function lerColagem(texto) {
     });
   }
 
-  // código repetido no relatório: soma e avisa
-  const porSeq = new Map();
-  for (const i of itens) {
-    if (porSeq.has(i.seq)) {
-      porSeq.get(i.seq).qtd += i.qtd;
-      problemas.push(`código ${i.seq} apareceu mais de uma vez — as quantidades foram somadas`);
-    } else porSeq.set(i.seq, { ...i });
+  // relatório sem nenhum produto não conta (cabeçalho solto, por exemplo)
+  const relatorios = blocos.filter((b) => b.itens.length);
+  relatorios.forEach((b) => { b.soma = b.itens.reduce((a, i) => a + i.qtd, 0); });
+
+  /* Repetidos: fica só a PRIMEIRA aparição, nada é somado.
+     A conferência de cada relatório usa as linhas como vieram, antes
+     de tirar os repetidos — senão o total do sistema nunca bateria. */
+  const vistos = new Map();
+  const repetidos = new Map();
+  const itens = [];
+  for (const i of relatorios.flatMap((b) => b.itens)) {
+    const anterior = vistos.get(i.seq);
+    if (anterior) {
+      const r = repetidos.get(i.seq) ||
+        { seq: i.seq, desc: anterior.desc, qtdMantida: anterior.qtd, descartadas: [] };
+      r.descartadas.push(i.qtd);
+      repetidos.set(i.seq, r);
+      continue;
+    }
+    vistos.set(i.seq, i);
+    itens.push(i);
   }
 
-  const finais = [...porSeq.values()];
-  const soma = finais.reduce((a, i) => a + i.qtd, 0);
+  const soma = itens.reduce((a, i) => a + i.qtd, 0);
 
-  return { itens: finais, soma, totalDeclarado, linhasDeclaradas, cabecalho, problemas };
+  return { itens, relatorios, soma, repetidos: [...repetidos.values()], problemas };
 }
 
 /* ---------- conferência ---------- */
@@ -94,24 +125,50 @@ async function conferir() {
     return;
   }
 
-  /* --- checksum do próprio sistema --- */
-  const okLinhas = r.linhasDeclaradas == null || r.linhasDeclaradas === r.itens.length;
-  const okTotal  = r.totalDeclarado  == null || Math.abs(r.totalDeclarado - r.soma) < 0.001;
+  /* --- checksum do próprio sistema, relatório por relatório --- */
+  const rel = r.relatorios;
+  const bate = (x) =>
+    (x.linhasDeclaradas == null || x.linhasDeclaradas === x.itens.length) &&
+    (x.totalDeclarado == null || Math.abs(x.totalDeclarado - x.soma) < 0.001);
+  const semTotal = rel.filter((x) => x.linhasDeclaradas == null && x.totalDeclarado == null);
+  const naoBatem = rel.filter((x) => !bate(x));
 
-  if (r.linhasDeclaradas == null && r.totalDeclarado == null) {
+  if (naoBatem.length) {
+    bloqueia = true;
+    const det = naoBatem.map((x) =>
+      `${rel.length > 1 ? `Relatório ${rel.indexOf(x) + 1}: ` : ""}li ${x.itens.length} produtos somando ` +
+      `${numeroBR(x.soma)} UN, mas ele declara ${x.linhasDeclaradas ?? "?"} linhas e ` +
+      `${numeroBR(x.totalDeclarado ?? 0)} UN`).join("<br>");
+    notas.push(`<div class="nota nota--erro"><b>A colagem não bate com o relatório.</b>
+      <span>${det}<br>Provavelmente a cópia veio pela metade — selecione tudo de novo e cole outra vez.</span></div>`);
+  } else if (semTotal.length === rel.length) {
     notas.push(`<div class="nota nota--alerta"><b>A linha “TOTAL” não veio na colagem.</b>
       <span>Dá para seguir, mas sem ela não consigo garantir que o relatório veio inteiro.
       Se puder, copie incluindo a linha de total.</span></div>`);
-  } else if (okLinhas && okTotal) {
+  } else if (rel.length === 1) {
     notas.push(`<div class="nota nota--ok"><b>Confere com o sistema.</b>
-      <span>${r.itens.length} produtos · total ${numeroBR(r.soma)} UN,
+      <span>${rel[0].itens.length} produtos · total ${numeroBR(rel[0].soma)} UN,
       igual ao que o relatório declara.</span></div>`);
   } else {
-    bloqueia = true;
-    notas.push(`<div class="nota nota--erro"><b>A colagem não bate com o relatório.</b>
-      <span>Li ${r.itens.length} produtos somando ${numeroBR(r.soma)} UN, mas o relatório declara
-      ${r.linhasDeclaradas ?? "?"} linhas e ${numeroBR(r.totalDeclarado ?? 0)} UN.
-      Provavelmente a cópia veio pela metade — selecione tudo de novo e cole outra vez.</span></div>`);
+    const porRel = rel.map((x, n) =>
+      `relatório ${n + 1}: ${x.itens.length} produtos · ${numeroBR(x.soma)} UN` +
+      (semTotal.includes(x) ? " <i>(sem linha TOTAL — não deu para conferir)</i>" : "")).join("<br>");
+    notas.push(`<div class="nota nota--ok"><b>${rel.length} relatórios colados.</b>
+      <span>${porRel}<br><b>Juntos: ${r.itens.length} produtos · ${numeroBR(r.soma)} UN${
+        r.repetidos.length ? ", já sem os repetidos" : ""}.</b></span></div>`);
+  }
+
+  /* --- código repetido: entra só a primeira aparição --- */
+  if (r.repetidos.length) {
+    const um = r.repetidos.length === 1;
+    const lista = r.repetidos.slice(0, 8).map((d) =>
+      `código ${d.seq} — ${d.desc} · entrou com ${numeroBR(d.qtdMantida)} UN, ` +
+      `ignorad${d.descartadas.length === 1 ? "a" : "as"} ${d.descartadas.map(numeroBR).join(", ")} UN`
+    ).join("<br>");
+    notas.push(`<div class="nota nota--alerta">
+      <b>${r.repetidos.length} produto${um ? "" : "s"} apareceu${um ? "" : "ram"} mais de uma vez na colagem.</b>
+      <span>Entra só a primeira aparição — as quantidades <b>não</b> foram somadas.<br>${lista}${
+        r.repetidos.length > 8 ? "<br>…" : ""}</span></div>`);
   }
 
   /* --- recontagem: fica só com os produtos marcados --- */
