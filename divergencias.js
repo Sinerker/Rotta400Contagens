@@ -3,12 +3,19 @@
    =============================================
    A conversão pela embalagem acontece no banco,
    dentro de divergencia_lote(). Aqui só apresenta.
+
+   Numa RECONTAGEM a tela também compara com o
+   inventário de origem. O que interessa não é o
+   número contado (entre as duas contagens houve
+   venda), e sim a DIFERENÇA: se ela se manteve, a
+   divergência é real.
    ============================================= */
 const $ = (id) => document.getElementById(id);
 if (!exigirLogin()) throw new Error("sem login");
 
 const loteId = sessionStorage.getItem("r400_lote");
 let lote = null, linhas = [], mostrarTudo = false;
+let origem = null, linhasOrigem = new Map(), mostrarComp = true;
 
 const ROTULOS = {
   falta:          { txt: "Falta",          cls: "selo--falta", cor: "FFF4D3D0" },
@@ -18,6 +25,49 @@ const ROTULOS = {
   ok:             { txt: "Confere",        cls: "selo--ok",    cor: "FFFFFFFF" },
 };
 
+/* Veredito da recontagem: o que a segunda contagem provou. */
+const VEREDITOS = {
+  confirmou:     { txt: "Confirmou",            cls: "selo--falta", cor: "FFF4D3D0" },
+  sistema:       { txt: "Sistema se acertou",   cls: "selo--ncad",  cor: "FFD6E6F8" },
+  contagem:      { txt: "Contagem se acertou",  cls: "selo--sobra", cor: "FFD4EDDB" },
+  mudou:         { txt: "Mudou",                cls: "selo--nconf", cor: "FFFAF0CC" },
+  apareceu:      { txt: "Apareceu agora",       cls: "selo--nconf", cor: "FFFAF0CC" },
+  nao_recontado: { txt: "Não recontado",        cls: "selo--ok",    cor: "FFFFFFFF" },
+  bateu:         { txt: "Bateu nas duas",       cls: "selo--ok",    cor: "FFFFFFFF" },
+  sem_origem:    { txt: "—",                    cls: "selo--ok",    cor: "FFFFFFFF" },
+};
+
+const ORDEM_VEREDITO = ["confirmou", "mudou", "apareceu", "contagem", "sistema", "nao_recontado", "bateu"];
+
+/* Compara uma linha da recontagem com a mesma linha do inventário de origem.
+   "Sistema se acertou": o contado foi o MESMO nas duas e mesmo assim a
+   diferença zerou — quem andou foi o estoque do sistema, ou seja, o
+   relatório da primeira vez estava atrasado.
+   "Contagem se acertou": o contado mudou na segunda — a primeira errou. */
+function comparar(l) {
+  const o = l.seqproduto == null ? null : linhasOrigem.get(String(l.seqproduto));
+  if (!o) return { o: null, chave: "sem_origem", saiu: null };
+
+  const d1 = Number(o.diferenca || 0);
+  const d2 = Number(l.diferenca || 0);
+  const saiu = (o.qtd_sistema == null || l.qtd_sistema == null)
+    ? null : Number(o.qtd_sistema) - Number(l.qtd_sistema);
+
+  let chave;
+  if (l.situacao === "nao_conferido")  chave = "nao_recontado";
+  else if (d1 === 0 && d2 === 0)       chave = "bateu";
+  else if (d1 === 0)                   chave = "apareceu";
+  else if (d2 === 0)                   chave = Number(l.qtd_contada) === Number(o.qtd_contada)
+                                                ? "sistema" : "contagem";
+  else if (d2 === d1)                  chave = "confirmou";
+  else                                 chave = "mudou";
+
+  return { o, chave, saiu };
+}
+
+const temComparativo = () => !!origem && linhasOrigem.size > 0;
+const comparativoLigado = () => temComparativo() && mostrarComp;
+
 async function carregar() {
   if (!loteId) { location.href = "index.html"; return; }
   const [l] = await api(`lote?select=*,loja(nome)&id=eq.${loteId}`);
@@ -25,6 +75,15 @@ async function carregar() {
   lote = l;
   $("lote-nome").textContent = l.nome;
   $("lote-sub").textContent = l.loja?.nome || "";
+
+  // Recontagem: busca o inventário de origem para o comparativo.
+  // Se ele tiver sido excluído, origem_id já veio nulo e a tela segue sem comparativo.
+  if (l.origem_id) {
+    try {
+      const [o] = await api(`lote?select=id,nome,retrato_em,fechado_em&id=eq.${l.origem_id}`);
+      origem = o || null;
+    } catch { origem = null; }
+  }
 
   const itens = await api(`lote_item?select=seqproduto&lote_id=eq.${loteId}`);
   const cont  = await api(`contagem?select=seqproduto,cancela_id&lote_id=eq.${loteId}&limit=20000`);
@@ -35,7 +94,8 @@ async function carregar() {
   $("situacao").innerHTML = `
     ${feitos} de ${itens.length} produtos contados ·
     retrato do sistema em <b>${dataHoraBR(l.retrato_em)}</b>
-    ${l.status === "fechado" ? `<br>Fechado em <b>${dataHoraBR(l.fechado_em)}</b>` : ""}`;
+    ${l.status === "fechado" ? `<br>Fechado em <b>${dataHoraBR(l.fechado_em)}</b>` : ""}
+    ${origem ? `<br>Recontagem de <b>${origem.nome}</b>` : ""}`;
 
   // regra de ouro virando trava
   const horas = (Date.now() - new Date(l.retrato_em)) / 36e5;
@@ -62,6 +122,15 @@ async function gerar() {
       lote.status = "fechado";
     }
     linhas = await rpc("divergencia_lote", { p_lote: loteId });
+
+    if (origem) {
+      try {
+        const ant = await rpc("divergencia_lote", { p_lote: origem.id });
+        linhasOrigem = new Map(
+          ant.filter((x) => x.seqproduto != null).map((x) => [String(x.seqproduto), x]));
+      } catch { linhasOrigem = new Map(); }
+    }
+
     desenhar();
     $("caixa-res").style.display = "flex";
     $("caixa-fechar").classList.add("oculto");
@@ -72,6 +141,8 @@ async function gerar() {
 }
 
 function desenhar() {
+  const comp = comparativoLigado();
+
   const cont = { falta: 0, sobra: 0, nao_conferido: 0, nao_cadastrado: 0, ok: 0 };
   linhas.forEach((l) => { cont[l.situacao] = (cont[l.situacao] || 0) + 1; });
 
@@ -81,14 +152,63 @@ function desenhar() {
       k === "nao_conferido" ? "--atencao" : k === "nao_cadastrado" ? "--info" : "--fraco"
     })">${cont[k] || 0}</span><span class="k">${ROTULOS[k].txt}</span></div>`).join("");
 
+  /* ---- comparativo com a contagem anterior ---- */
+  $("btn-comparativo").classList.toggle("oculto", !temComparativo());
+  $("btn-comparativo").textContent = mostrarComp
+    ? "Esconder comparativo" : "Mostrar comparativo com a 1ª contagem";
+  $("placar-comp").classList.toggle("oculto", !comp);
+  $("nota-comparativo").classList.toggle("oculto", !comp);
+
+  if (comp) {
+    const vc = {};
+    linhas.forEach((l) => { const k = comparar(l).chave; vc[k] = (vc[k] || 0) + 1; });
+    $("placar-comp").innerHTML = ORDEM_VEREDITO
+      .filter((k) => vc[k])
+      .map((k) => `<div class="p"><span class="v" style="color:var(${
+        k === "confirmou" ? "--falta" : k === "contagem" ? "--sobra" :
+        k === "sistema" ? "--info" :
+        (k === "mudou" || k === "apareceu") ? "--atencao" : "--fraco"
+      })">${vc[k]}</span><span class="k">${VEREDITOS[k].txt}</span></div>`).join("");
+
+    $("nota-comparativo").innerHTML =
+      `<b>Comparando com ${origem.nome}.</b>
+       <span>Entre as duas contagens houve venda, então o que vale comparar é a
+       <b>diferença</b>, não a quantidade contada.<br>
+       <b>Confirmou</b> — a mesma diferença nas duas vezes. É divergência real.<br>
+       <b>Sistema se acertou</b> — você contou o mesmo número nas duas e a diferença sumiu:
+       quem andou foi o estoque do sistema, o relatório da primeira vez estava atrasado.<br>
+       <b>Contagem se acertou</b> — o número contado mudou na segunda: a primeira contagem errou.<br>
+       <b>Saiu</b> é quanto o sistema baixou entre as duas (negativo = entrou mercadoria).</span>`;
+  }
+
+  /* ---- cabeçalho ---- */
+  $("cabecalho").innerHTML =
+    `<th style="width:34px"></th><th>Situação</th><th>Código</th><th>Produto</th>` +
+    (comp
+      ? `<th style="text-align:right">Sist. 1ª</th>
+         <th style="text-align:right">Cont. 1ª</th>
+         <th style="text-align:right">Dif 1ª</th>
+         <th style="text-align:right">Saiu</th>` : "") +
+    `<th style="text-align:right">Sistema</th>
+     <th style="text-align:right">Contado</th>
+     <th style="text-align:right">Diferença</th>` +
+    (comp ? `<th>Veredito</th>` : "");
+
+  const colunas = comp ? 12 : 7;
+
   const visiveis = linhas
     .filter((l) => mostrarTudo || l.situacao !== "ok")
     .sort((a, b) => Math.abs(Number(b.diferenca || 0)) - Math.abs(Number(a.diferenca || 0)));
+
+  const num = (v) => (v == null ? "—" : numeroBR(v));
+  const corDif = (d) => `color:var(${d < 0 ? "--falta" : d > 0 ? "--sobra" : "--fraco"})`;
 
   $("corpo").innerHTML = visiveis.length
     ? visiveis.map((l) => {
         const r = ROTULOS[l.situacao];
         const d = Number(l.diferenca || 0);
+        const c = comp ? comparar(l) : null;
+        const d1 = c?.o ? Number(c.o.diferenca || 0) : null;
         // Produto sem código (Não Cadastrado) não pode ser recontado:
         // ele não existe no relatório de estoque.
         const podeRecontar = !!l.seqproduto;
@@ -101,13 +221,21 @@ function desenhar() {
           <td><span class="selo ${r.cls}">${r.txt}</span></td>
           <td class="num">${l.seqproduto ?? "—"}</td>
           <td>${l.descricao}</td>
+          ${comp ? `
+          <td class="num fraco">${c.o ? num(c.o.qtd_sistema) : "—"}</td>
+          <td class="num fraco">${c.o ? num(c.o.qtd_contada) : "—"}</td>
+          <td class="num" style="${d1 == null ? "" : corDif(d1)}">
+            ${d1 == null ? "—" : (d1 > 0 ? "+" : "") + numeroBR(d1)}</td>
+          <td class="num fraco">${c.saiu == null ? "—" : numeroBR(c.saiu)}</td>` : ""}
           <td class="num">${l.qtd_sistema == null ? "—" : numeroBR(l.qtd_sistema)}</td>
           <td class="num">${numeroBR(l.qtd_contada)}</td>
-          <td class="num" style="font-weight:700;color:var(${d < 0 ? "--falta" : d > 0 ? "--sobra" : "--fraco"})">
+          <td class="num" style="font-weight:700;${corDif(d)}">
             ${d > 0 ? "+" : ""}${numeroBR(d)}</td>
+          ${comp ? `<td><span class="selo ${VEREDITOS[c.chave].cls}">${
+            VEREDITOS[c.chave].txt}</span></td>` : ""}
         </tr>`;
       }).join("")
-    : `<tr><td colspan="7" class="fraco" style="padding:1.2rem">Nenhuma divergência. Tudo bateu.</td></tr>`;
+    : `<tr><td colspan="${colunas}" class="fraco" style="padding:1.2rem">Nenhuma divergência. Tudo bateu.</td></tr>`;
 
   $("corpo").querySelectorAll(".marca").forEach((c) =>
     c.addEventListener("change", () => {
@@ -156,19 +284,26 @@ async function baixarExcel() {
   b.disabled = true; b.textContent = "Montando…";
   try {
     await carregarExcelJS();
+    const comp = comparativoLigado();
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("Divergências");
 
-    ws.mergeCells("A1:F1");
+    const ultimaCol = comp ? "K" : "F";
+    ws.mergeCells(`A1:${ultimaCol}1`);
     ws.getCell("A1").value = lote.nome;
     ws.getCell("A1").font = { bold: true, size: 14 };
-    ws.mergeCells("A2:F2");
+    ws.mergeCells(`A2:${ultimaCol}2`);
     ws.getCell("A2").value =
       `Retrato do sistema: ${dataHoraBR(lote.retrato_em)}   ·   ` +
-      `Fechado em: ${dataHoraBR(lote.fechado_em)}   ·   Loja: ${lote.loja?.nome || ""}`;
+      `Fechado em: ${dataHoraBR(lote.fechado_em)}   ·   Loja: ${lote.loja?.nome || ""}` +
+      (comp ? `   ·   Comparando com: ${origem.nome}` : "");
     ws.getCell("A2").font = { size: 10, color: { argb: "FF666666" } };
 
-    const cab = ["Situação", "Código", "Produto", "Qtd Sistema", "Qtd Contada", "Diferença"];
+    const cab = comp
+      ? ["Situação", "Código", "Produto",
+         "Sist. 1ª", "Cont. 1ª", "Dif 1ª", "Saiu",
+         "Sistema", "Contado", "Diferença", "Veredito"]
+      : ["Situação", "Código", "Produto", "Qtd Sistema", "Qtd Contada", "Diferença"];
     ws.addRow([]);
     ws.addRow(cab);
     const rc = ws.lastRow;
@@ -183,25 +318,44 @@ async function baixarExcel() {
       .sort((a, b2) => (ordem[a.situacao] - ordem[b2.situacao]) ||
                         (Math.abs(Number(b2.diferenca || 0)) - Math.abs(Number(a.diferenca || 0))))
       .forEach((l) => {
-        const r = ws.addRow([
-          ROTULOS[l.situacao].txt,
-          l.seqproduto ?? "",
-          l.descricao,
+        const c = comp ? comparar(l) : null;
+        const base = [ROTULOS[l.situacao].txt, l.seqproduto ?? "", l.descricao];
+        const meio = comp ? [
+          c.o && c.o.qtd_sistema != null ? Number(c.o.qtd_sistema) : "",
+          c.o ? Number(c.o.qtd_contada || 0) : "",
+          c.o ? Number(c.o.diferenca || 0) : "",
+          c.saiu == null ? "" : Number(c.saiu),
+        ] : [];
+        const fim = [
           l.qtd_sistema == null ? "" : Number(l.qtd_sistema),
           Number(l.qtd_contada || 0),
           Number(l.diferenca || 0),
-        ]);
+        ];
+        const r = ws.addRow([...base, ...meio, ...fim,
+                             ...(comp ? [VEREDITOS[c.chave].txt] : [])]);
         const cor = ROTULOS[l.situacao].cor;
-        r.eachCell((c) => {
-          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: cor } };
-          c.border = { bottom: { style: "hair", color: { argb: "FFCCCCCC" } } };
+        r.eachCell((c2) => {
+          c2.fill = { type: "pattern", pattern: "solid", fgColor: { argb: cor } };
+          c2.border = { bottom: { style: "hair", color: { argb: "FFCCCCCC" } } };
         });
-        r.getCell(6).font = { bold: true };
+        r.getCell(comp ? 10 : 6).font = { bold: true };
+        if (comp) {
+          r.getCell(11).fill = {
+            type: "pattern", pattern: "solid",
+            fgColor: { argb: VEREDITOS[c.chave].cor },
+          };
+          r.getCell(11).font = { bold: true };
+        }
       });
 
-    ws.columns = [{ width: 16 }, { width: 11 }, { width: 46 }, { width: 13 }, { width: 13 }, { width: 12 }];
+    ws.columns = comp
+      ? [{ width: 16 }, { width: 11 }, { width: 42 },
+         { width: 10 }, { width: 10 }, { width: 9 }, { width: 8 },
+         { width: 10 }, { width: 10 }, { width: 11 }, { width: 22 }]
+      : [{ width: 16 }, { width: 11 }, { width: 46 }, { width: 13 }, { width: 13 }, { width: 12 }];
     ws.views = [{ state: "frozen", ySplit: rc.number }];
-    ws.autoFilter = { from: { row: rc.number, column: 1 }, to: { row: rc.number, column: 6 } };
+    ws.autoFilter = { from: { row: rc.number, column: 1 },
+                      to: { row: rc.number, column: cab.length } };
 
     const buf = await wb.xlsx.writeBuffer();
     const nome = lote.nome.replace(/[\\/:*?"<>|]/g, "-") + ".xlsx";
@@ -234,6 +388,7 @@ $("btn-marcar-todos").addEventListener("click", marcarTodosDivergentes);
 $("btn-desmarcar").addEventListener("click", limparSelecao);
 $("btn-recontar").addEventListener("click", irParaRecontagem);
 $("btn-excel").addEventListener("click", baixarExcel);
+$("btn-comparativo").addEventListener("click", () => { mostrarComp = !mostrarComp; desenhar(); });
 $("btn-tudo").addEventListener("click", () => {
   mostrarTudo = !mostrarTudo;
   $("btn-tudo").textContent = mostrarTudo ? "Mostrar só as divergências" : "Mostrar também os que bateram";
