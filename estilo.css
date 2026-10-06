@@ -233,3 +233,17 @@ main.tem-barra-baixo{padding-bottom:5.5rem}
   .grande{font-size:1.15rem}
   .barra-baixo .rot{font-size:.66rem}
 }
+
+/* ---------- tabela do comparativo da recontagem ----------
+   Com o comparativo ligado são 12 colunas, que não cabem na coluna de
+   leitura de 900px. Só nessa hora a página abre até 1500px; o que não é
+   tabela continua com a largura de leitura. Quando a tela aperta, somem
+   primeiro as colunas que dá para deduzir, e no limite a tabela rola. */
+main.largo{max-width:1500px}
+main.largo #caixa-res > :not(.tabela-rolagem){width:100%;max-width:900px;align-self:center}
+.tabela-comp table{font-size:.82rem;min-width:0}
+.tabela-comp th,.tabela-comp td{padding:.42rem .5rem}
+.tabela-comp td.num,.tabela-comp th{white-space:nowrap}
+.tabela-comp td .selo{white-space:nowrap}
+@media (max-width:1250px){ .tabela-comp .col-saiu{display:none} }
+@media (max-width:1060px){ .tabela-comp .col-crua{display:none} }

@@ -192,18 +192,24 @@ function desenhar() {
        <b>Saiu</b> é quanto o sistema baixou entre as duas (negativo = entrou mercadoria).</span>`;
   }
 
-  /* ---- cabeçalho ---- */
+  /* ---- cabeçalho ----
+     O veredito vem logo depois da situação: é a coluna que o auditor
+     procura, não pode ser a última de uma tabela de 12 colunas. */
+  document.querySelector("main").classList.toggle("largo", comp);
+  $("caixa-tabela").classList.toggle("tabela-comp", comp);
+
   $("cabecalho").innerHTML =
-    `<th style="width:34px"></th><th>Situação</th><th>Código</th><th>Produto</th>` +
+    `<th style="width:34px"></th><th>Situação</th>` +
+    (comp ? `<th>Veredito</th>` : "") +
+    `<th>Código</th><th>Produto</th>` +
     (comp
-      ? `<th style="text-align:right">Sist. 1ª</th>
-         <th style="text-align:right">Cont. 1ª</th>
+      ? `<th class="col-crua" style="text-align:right">Sist. 1ª</th>
+         <th class="col-crua" style="text-align:right">Cont. 1ª</th>
          <th style="text-align:right">Dif 1ª</th>
-         <th style="text-align:right">Saiu</th>` : "") +
+         <th class="col-saiu" style="text-align:right">Saiu</th>` : "") +
     `<th style="text-align:right">Sistema</th>
      <th style="text-align:right">Contado</th>
-     <th style="text-align:right">Diferença</th>` +
-    (comp ? `<th>Veredito</th>` : "");
+     <th style="text-align:right">Diferença</th>`;
 
   const colunas = comp ? 12 : 7;
 
@@ -230,20 +236,20 @@ function desenhar() {
                  style="width:20px;height:20px">`
             : ""}</td>
           <td><span class="selo ${r.cls}">${r.txt}</span></td>
+          ${comp ? `<td><span class="selo ${VEREDITOS[c.chave].cls}">${
+            VEREDITOS[c.chave].txt}</span></td>` : ""}
           <td class="num">${l.seqproduto ?? "—"}</td>
           <td>${l.descricao}</td>
           ${comp ? `
-          <td class="num fraco">${c.o ? num(c.o.qtd_sistema) : "—"}</td>
-          <td class="num fraco">${c.o ? num(c.o.qtd_contada) : "—"}</td>
+          <td class="num fraco col-crua">${c.o ? num(c.o.qtd_sistema) : "—"}</td>
+          <td class="num fraco col-crua">${c.o ? num(c.o.qtd_contada) : "—"}</td>
           <td class="num" style="${d1 == null ? "" : corDif(d1)}">
             ${d1 == null ? "—" : (d1 > 0 ? "+" : "") + numeroBR(d1)}</td>
-          <td class="num fraco">${c.saiu == null ? "—" : numeroBR(c.saiu)}</td>` : ""}
+          <td class="num fraco col-saiu">${c.saiu == null ? "—" : numeroBR(c.saiu)}</td>` : ""}
           <td class="num">${l.qtd_sistema == null ? "—" : numeroBR(l.qtd_sistema)}</td>
           <td class="num">${numeroBR(l.qtd_contada)}</td>
           <td class="num" style="font-weight:700;${corDif(d)}">
             ${d > 0 ? "+" : ""}${numeroBR(d)}</td>
-          ${comp ? `<td><span class="selo ${VEREDITOS[c.chave].cls}">${
-            VEREDITOS[c.chave].txt}</span></td>` : ""}
         </tr>`;
       }).join("")
     : `<tr><td colspan="${colunas}" class="fraco" style="padding:1.2rem">Nenhuma divergência. Tudo bateu.</td></tr>`;
@@ -311,9 +317,9 @@ async function baixarExcel() {
     ws.getCell("A2").font = { size: 10, color: { argb: "FF666666" } };
 
     const cab = comp
-      ? ["Situação", "Código", "Produto",
+      ? ["Situação", "Veredito", "Código", "Produto",
          "Sist. 1ª", "Cont. 1ª", "Dif 1ª", "Saiu",
-         "Sistema", "Contado", "Diferença", "Veredito"]
+         "Sistema", "Contado", "Diferença"]
       : ["Situação", "Código", "Produto", "Qtd Sistema", "Qtd Contada", "Diferença"];
     ws.addRow([]);
     ws.addRow(cab);
@@ -330,7 +336,9 @@ async function baixarExcel() {
                         (Math.abs(Number(b2.diferenca || 0)) - Math.abs(Number(a.diferenca || 0))))
       .forEach((l) => {
         const c = comp ? comparar(l) : null;
-        const base = [ROTULOS[l.situacao].txt, l.seqproduto ?? "", l.descricao];
+        const base = comp
+          ? [ROTULOS[l.situacao].txt, VEREDITOS[c.chave].txt, l.seqproduto ?? "", l.descricao]
+          : [ROTULOS[l.situacao].txt, l.seqproduto ?? "", l.descricao];
         const meio = comp ? [
           c.o && c.o.qtd_sistema != null ? Number(c.o.qtd_sistema) : "",
           c.o ? Number(c.o.qtd_contada || 0) : "",
@@ -342,27 +350,26 @@ async function baixarExcel() {
           Number(l.qtd_contada || 0),
           Number(l.diferenca || 0),
         ];
-        const r = ws.addRow([...base, ...meio, ...fim,
-                             ...(comp ? [VEREDITOS[c.chave].txt] : [])]);
+        const r = ws.addRow([...base, ...meio, ...fim]);
         const cor = ROTULOS[l.situacao].cor;
         r.eachCell((c2) => {
           c2.fill = { type: "pattern", pattern: "solid", fgColor: { argb: cor } };
           c2.border = { bottom: { style: "hair", color: { argb: "FFCCCCCC" } } };
         });
-        r.getCell(comp ? 10 : 6).font = { bold: true };
+        r.getCell(comp ? 11 : 6).font = { bold: true };   // Diferença
         if (comp) {
-          r.getCell(11).fill = {
+          r.getCell(2).fill = {                            // Veredito
             type: "pattern", pattern: "solid",
             fgColor: { argb: VEREDITOS[c.chave].cor },
           };
-          r.getCell(11).font = { bold: true };
+          r.getCell(2).font = { bold: true };
         }
       });
 
     ws.columns = comp
-      ? [{ width: 16 }, { width: 11 }, { width: 42 },
+      ? [{ width: 16 }, { width: 22 }, { width: 11 }, { width: 42 },
          { width: 10 }, { width: 10 }, { width: 9 }, { width: 8 },
-         { width: 10 }, { width: 10 }, { width: 11 }, { width: 22 }]
+         { width: 10 }, { width: 10 }, { width: 11 }]
       : [{ width: 16 }, { width: 11 }, { width: 46 }, { width: 13 }, { width: 13 }, { width: 12 }];
     ws.views = [{ state: "frozen", ySplit: rc.number }];
     ws.autoFilter = { from: { row: rc.number, column: 1 },

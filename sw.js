@@ -10,7 +10,9 @@
    Elas vão direto para a rede — dado de contagem em
    cache seria mentira.
    ============================================= */
-const VERSAO = "v8";
+// SEMPRE suba este número ao publicar: é ele que faz o navegador
+// perceber a versão nova e trocar sozinho (ver pwa.js).
+const VERSAO = "v9";
 const CACHE = `contagens-${VERSAO}`;
 
 const ESQUELETO = [
@@ -21,6 +23,11 @@ const ESQUELETO = [
   "./pwa.js", "./manifest.json",
   "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png",
 ];
+
+// O pwa.js pede para a versão nova assumir sem esperar as abas fecharem.
+self.addEventListener("message", (e) => {
+  if (e.data?.tipo === "assumir") self.skipWaiting();
+});
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
