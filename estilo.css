@@ -245,5 +245,7 @@ main.largo #caixa-res > :not(.tabela-rolagem){width:100%;max-width:900px;align-s
 .tabela-comp th,.tabela-comp td{padding:.42rem .5rem}
 .tabela-comp td.num,.tabela-comp th{white-space:nowrap}
 .tabela-comp td .selo{white-space:nowrap}
-@media (max-width:1250px){ .tabela-comp .col-saiu{display:none} }
-@media (max-width:1060px){ .tabela-comp .col-crua{display:none} }
+/* Medido na tela: com tudo a tabela precisa de ~910px, sem a coluna
+   Saiu ~865px, e só com o essencial ~730px. Os cortes seguem isso. */
+@media (max-width:980px){ .tabela-comp .col-saiu{display:none} }
+@media (max-width:900px){ .tabela-comp .col-crua{display:none} }
