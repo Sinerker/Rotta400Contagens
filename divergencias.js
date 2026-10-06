@@ -68,12 +68,23 @@ function comparar(l) {
 const temComparativo = () => !!origem && linhasOrigem.size > 0;
 const comparativoLigado = () => temComparativo() && mostrarComp;
 
+/* O <span id="lote-sub"> mora DENTRO do <h1 id="lote-nome">. Usar
+   textContent no h1 apagava o span, e a linha seguinte estourava em
+   null.textContent — derrubando o resto do carregar(), inclusive a
+   busca do inventário de origem. Aqui troca só o texto e deixa o span vivo. */
+function mostrarNomeLote(nome) {
+  const h1 = $("lote-nome");
+  const t = h1.firstChild;
+  if (t && t.nodeType === Node.TEXT_NODE) t.nodeValue = nome;
+  else h1.insertBefore(document.createTextNode(nome), h1.firstChild);
+}
+
 async function carregar() {
   if (!loteId) { location.href = "index.html"; return; }
   const [l] = await api(`lote?select=*,loja(nome)&id=eq.${loteId}`);
   if (!l) { aviso("Inventário não encontrado"); return; }
   lote = l;
-  $("lote-nome").textContent = l.nome;
+  mostrarNomeLote(l.nome);
   $("lote-sub").textContent = l.loja?.nome || "";
 
   // Recontagem: busca o inventário de origem para o comparativo.
