@@ -12,7 +12,7 @@
    ============================================= */
 // SEMPRE suba este número ao publicar: é ele que faz o navegador
 // perceber a versão nova e trocar sozinho (ver pwa.js).
-const VERSAO = "v10";
+const VERSAO = "v11";
 const CACHE = `contagens-${VERSAO}`;
 
 const ESQUELETO = [
@@ -32,7 +32,11 @@ self.addEventListener("message", (e) => {
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(CACHE)
-      .then((c) => Promise.allSettled(ESQUELETO.map((u) => c.add(u))))
+      // cache:"reload" obriga a buscar do servidor. Sem isso o navegador
+      // devolve a cópia dele (o GitHub Pages manda guardar por 10 minutos)
+      // e a versão nova nasceria com os arquivos velhos dentro.
+      .then((c) => Promise.allSettled(
+        ESQUELETO.map((u) => c.add(new Request(u, { cache: "reload" })))))
       .then(() => self.skipWaiting())
   );
 });
@@ -56,7 +60,9 @@ self.addEventListener("fetch", (e) => {
   e.respondWith(
     caches.open(CACHE).then(async (cache) => {
       const guardado = await cache.match(req, { ignoreSearch: true });
-      const daRede = fetch(req)
+      // a busca em paralelo também ignora o cache do navegador, senão a
+      // cópia guardada nunca se renova antes da hora
+      const daRede = fetch(req.url, { cache: "no-cache" })
         .then((r) => { if (r && r.ok) cache.put(req, r.clone()); return r; })
         .catch(() => null);
       return guardado || (await daRede) ||
