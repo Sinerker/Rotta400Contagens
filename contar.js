@@ -79,6 +79,16 @@ const rotuloEmb = (emb, grande, sig) => {
 const rotuloLocal = (t) => `<span class="local-chip">${t === "deposito" ? "Depósito" : "Loja"}</span>`;
 const nomeLocal = (t) => t === "deposito" ? "depósito" : "loja";
 
+/* ---------- quantidades digitadas ----------
+   Os campos de quantidade são "text" com teclado numérico, não "number":
+   no teclado numérico do Android o tipo number ignora o pedido de tecla
+   Enter e mostra ✓ ou →. Aceita vírgula ou ponto como decimal. */
+function numDigitado(v) {
+  const t = String(v ?? "").trim().replace(/\s/g, "");
+  if (!/^-?\d+([.,]\d+)?$/.test(t)) return NaN;
+  return Number(t.replace(",", "."));
+}
+
 /* ---------- datas ---------- */
 const hoje = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const isoDe = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -433,7 +443,7 @@ async function lancar() {
     return;
   }
   const bruto = $("quantidade").value.trim();
-  const qtd = bruto === "" ? NaN : Number(bruto);
+  const qtd = bruto === "" ? NaN : numDigitado(bruto);
   if (Number.isNaN(qtd) || qtd < 0 || Math.abs(qtd) > 999999) { aviso("Quantidade inválida"); bip("erro"); return; }
   if (qtd === 0) { limpar(); return; }
 
@@ -529,7 +539,7 @@ function desenharDatas() {
       <div class="campo"><label for="d-data">Data</label>
         <input type="text" id="d-data" class="grande" inputmode="numeric" placeholder="DD/MM/AA" autocomplete="off"/></div>
       <div class="campo"><label for="d-qtd">Qtd</label>
-        <input type="number" id="d-qtd" class="grande" step="any" inputmode="decimal" placeholder="${numeroBR(falta)}"/></div>
+        <input type="text" id="d-qtd" class="grande" inputmode="decimal" autocomplete="off" placeholder="${numeroBR(falta)}"/></div>
     </div>
     <div class="data-interp" id="d-interp">Data + Enter, depois Qtd + Enter (vazia = os ${numeroBR(falta)} que faltam)</div>
     <button type="button" class="btn btn--2 btn--bloco" id="d-voltar">Voltar e corrigir a quantidade</button>
@@ -565,7 +575,7 @@ function desenharDatas() {
     if (ev.key !== "Enter") return;
     ev.preventDefault();
     const iso = mostrar(); if (!iso) { dIn.focus(); bip("erro"); return; }
-    const q = qIn.value === "" ? falta : Number(qIn.value);
+    const q = qIn.value.trim() === "" ? falta : numDigitado(qIn.value);
     if (!(q > 0)) { aviso("Quantidade inválida"); bip("erro"); return; }
     if (q > falta) { aviso(`Passa do total: faltam só ${numeroBR(falta)}`); bip("erro"); qIn.select(); return; }
     const ja = e.lista.find((x) => x.validade === iso);
@@ -837,7 +847,7 @@ function htmlEditor(g) {
   return `<div class="editor">
     <div class="item-desc">${esc(item ? item.desc : "EAN " + g.ean)} ${rotuloEmb(g.emb, false, siglaDe(g.seq, g.emb, g.ean))}</div>
     <div class="campo"><label for="ed-total">Quantidade${g.emb !== 1 ? " (pacotes)" : ""}</label>
-      <input type="number" id="ed-total" class="grande" step="any" inputmode="decimal" value="${e.total}"/></div>
+      <input type="text" id="ed-total" class="grande" inputmode="decimal" autocomplete="off" value="${String(e.total).replace(".", ",")}"/></div>
     ${R2() ? `<div class="local" role="group" aria-label="Local">
       <button type="button" id="ed-loja" aria-pressed="${e.tipo === "loja"}">LOJA</button>
       <button type="button" id="ed-deposito" aria-pressed="${e.tipo === "deposito"}">DEPÓSITO</button></div>` : ""}
@@ -850,7 +860,7 @@ function htmlEditor(g) {
         <div class="campo"><label for="ed-data">Data</label>
           <input type="text" id="ed-data" inputmode="numeric" placeholder="DD/MM/AA" autocomplete="off"/></div>
         <div class="campo"><label for="ed-qtd">Qtd</label>
-          <input type="number" id="ed-qtd" step="any" inputmode="decimal" placeholder="${falta > 0 ? numeroBR(falta) : ""}"/></div>
+          <input type="text" id="ed-qtd" inputmode="decimal" autocomplete="off" placeholder="${falta > 0 ? numeroBR(falta) : ""}"/></div>
       </div>
       <div class="data-interp" id="ed-interp">Tire a data errada no × e digite a certa</div>` : ""}
     <div class="linha-botoes">
@@ -880,7 +890,7 @@ function ligarEditor(redesenhar) {
     redesenhar(); focarEditor();
     return true;
   };
-  $("ed-total").addEventListener("input", (ev) => { e.total = Number(ev.target.value) || 0; atualizarBotao(); });
+  $("ed-total").addEventListener("input", (ev) => { e.total = numDigitado(ev.target.value) || 0; atualizarBotao(); });
   $("ed-total").addEventListener("blur", (ev) => {
     if (ev.relatedTarget?.id === "ed-cancelar") return;   // cancelando: não mexe
     ajustarDatas();
@@ -922,7 +932,7 @@ function ligarEditor(redesenhar) {
     if (ev.key !== "Enter") return; ev.preventDefault();
     const iso = mostrar(); if (!iso) { dIn.focus(); bip("erro"); return; }
     const falta = +(e.total - somaLista(e.lista)).toFixed(3);
-    const q = qIn.value === "" ? falta : Number(qIn.value);
+    const q = qIn.value.trim() === "" ? falta : numDigitado(qIn.value);
     if (!(q > 0)) { aviso("Quantidade inválida"); bip("erro"); return; }
     if (q > falta) { aviso(`Passa do total: faltam só ${numeroBR(falta)}`); bip("erro"); qIn.select(); return; }
     const ja = e.lista.find((x) => x.validade === iso);
