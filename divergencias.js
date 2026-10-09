@@ -122,6 +122,7 @@ async function carregar() {
     $("btn-gerar").textContent = "Ver divergências";
     gerar();
   }
+  if (l.confere_validade) carregarValidade().catch((e) => aviso("Validade: " + e.message));
 }
 
 async function gerar() {
@@ -400,6 +401,157 @@ function carregarExcelJS() {
     document.head.appendChild(s);
   });
 }
+
+/* ---------- relatório de validade ----------
+   Datas contadas no inventário, classificadas pelo dia de HOJE (não pelo
+   dia da contagem). Mostra até 60 dias; o resto continua gravado. */
+const LIMITE_VALIDADE = 60;
+const FAIXAS = [
+  { k: "venc", nome: "Vencido",                         ate: 0,  cor: "--falta",  xl: "FFF4D3D0", txt: "0 ou menos" },
+  { k: "urg",  nome: "Urgente",                         ate: 7,  cor: "--falta",  xl: "FFFBE0CC", txt: "1 a 7 dias" },
+  { k: "at",   nome: "Atenção",                         ate: 15, cor: "--atencao",xl: "FFFCEFC7", txt: "8 a 15 dias" },
+  { k: "ac",   nome: "Vence antes da próxima contagem", ate: 30, cor: "--info",   xl: "FFD9E8F2", txt: "16 a 30 dias" },
+  { k: "norm", nome: "Normal",                          ate: LIMITE_VALIDADE, cor: "--fraco", xl: "FFE8ECEF", txt: `31 a ${LIMITE_VALIDADE} dias` },
+];
+let validade = null;   // { linhas, giro, fora }
+
+const hojeZero = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const dataLocal = (s) => { const [a, m, d] = String(s).slice(0, 10).split("-").map(Number); return new Date(a, m - 1, d); };
+const diasPara = (s) => Math.round((dataLocal(s) - hojeZero()) / 864e5);
+
+async function carregarValidade() {
+  const [itens, cont] = await Promise.all([
+    api(`lote_item?select=seqproduto,descricao&lote_id=eq.${loteId}`),
+    api(`contagem?select=id,seqproduto,quantidade,qtd_embalagem,tipo,validade,cancela_id&lote_id=eq.${loteId}&limit=20000`),
+  ]);
+  const nome = new Map(itens.map((i) => [i.seqproduto, i.descricao]));
+  const cx = new Set(cont.filter((c) => c.cancela_id).map((c) => c.cancela_id));
+  const vivas = cont.filter((c) => !c.cancela_id && !cx.has(c.id) && c.validade && Number(c.quantidade) > 0);
+
+  // soma por produto + local + data, em unidades
+  const mapa = new Map();
+  for (const c of vivas) {
+    const k = `${c.seqproduto}|${c.tipo}|${c.validade}`;
+    const un = Number(c.quantidade) * Number(c.qtd_embalagem || 1);
+    const a = mapa.get(k);
+    if (a) a.un += un;
+    else mapa.set(k, { seq: c.seqproduto, desc: nome.get(c.seqproduto) || c.seqproduto,
+                       local: c.tipo, validade: String(c.validade).slice(0, 10), un });
+  }
+  const todas = [...mapa.values()].map((x) => ({ ...x, dias: diasPara(x.validade) }));
+  todas.forEach((x) => { x.faixa = FAIXAS.find((f) => x.dias <= f.ate)?.k || null; });
+  const linhas = todas.filter((x) => x.faixa).sort((a, b) => a.dias - b.dias || a.desc.localeCompare(b.desc));
+
+  // giro errado: o depósito vence antes da prateleira
+  const porSeq = new Map();
+  for (const x of todas) {
+    const a = porSeq.get(x.seq) || { desc: x.desc };
+    if (a[x.local] == null || x.dias < a[x.local]) a[x.local] = x.dias;
+    porSeq.set(x.seq, a);
+  }
+  const giro = [...porSeq].filter(([, a]) => a.deposito != null && a.loja != null && a.deposito < a.loja)
+    .map(([seq, a]) => ({ seq, desc: a.desc, dep: a.deposito, loja: a.loja }));
+
+  validade = { linhas, giro, fora: todas.length - linhas.length, total: todas.length };
+  desenharValidade();
+}
+
+function prazo(d) { return d < 0 ? `venceu há ${-d} dia${d === -1 ? "" : "s"}` : d === 0 ? "vence hoje" : `${d} dia${d === 1 ? "" : "s"}`; }
+
+function desenharValidade() {
+  const v = validade;
+  $("caixa-validade").classList.remove("oculto");
+  $("validade-explica").innerHTML = v.total
+    ? `Prazos contados a partir de hoje (${new Date().toLocaleDateString("pt-BR")}). Mostra até ${LIMITE_VALIDADE} dias${
+        v.fora ? ` — ${v.fora} registro${v.fora === 1 ? " com validade mais longa ficou" : "s com validade mais longa ficaram"} de fora` : ""}.`
+    : "Nenhuma data de validade registrada neste inventário ainda.";
+  $("placar-validade").innerHTML = FAIXAS.map((f) => {
+    const it = v.linhas.filter((x) => x.faixa === f.k);
+    return `<div class="p" style="border-top:4px solid var(${f.cor})"><span class="v" style="color:var(${f.cor})">${it.length}</span>
+      <span class="k">${f.nome} · ${numeroBR(it.reduce((a, x) => a + x.un, 0))} un</span></div>`;
+  }).join("");
+  $("giro-validade").innerHTML = v.giro.length
+    ? `<div class="nota nota--alerta"><b>Giro errado · ${v.giro.length}</b>
+        <span>${v.giro.map((g) => `${g.desc}: depósito vence em ${g.dep} dias, prateleira em ${g.loja}. Trazer o do depósito para a frente.`).join("<br>")}</span></div>`
+    : "";
+  $("faixas-validade").innerHTML = FAIXAS.map((f) => {
+    const it = v.linhas.filter((x) => x.faixa === f.k);
+    if (!it.length) return "";
+    return `<div><h3 style="color:var(${f.cor})">${f.nome} <span class="fraco">· ${f.txt}</span></h3>
+      <div class="tabela-rolagem"><table><thead><tr><th>Produto</th><th>Local</th><th>Validade</th><th>Prazo</th>
+        <th style="text-align:right">Qtd (UN)</th></tr></thead><tbody>
+        ${it.map((x) => `<tr><td>${x.desc}</td><td>${x.local === "deposito" ? "Depósito" : "Loja"}</td>
+          <td class="num">${dataLocal(x.validade).toLocaleDateString("pt-BR")}</td><td>${prazo(x.dias)}</td>
+          <td class="num">${numeroBR(x.un)}</td></tr>`).join("")}
+      </tbody></table></div></div>`;
+  }).join("");
+}
+
+async function baixarExcelValidade() {
+  const b = $("btn-excel-validade");
+  b.disabled = true; b.textContent = "Montando…";
+  try {
+    await carregarExcelJS();
+    const v = validade;
+    const wb = new ExcelJS.Workbook();
+    const cab = (ws) => ws.getRow(1).eachCell((c) => {
+      c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1A6FD4" } };
+    });
+
+    const ws = wb.addWorksheet("Validades", { views: [{ state: "frozen", ySplit: 1 }] });
+    ws.columns = [
+      { header: "Faixa", key: "faixa", width: 32 }, { header: "Código", key: "seq", width: 11 },
+      { header: "Produto", key: "desc", width: 44 }, { header: "Local", key: "local", width: 11 },
+      { header: "Validade", key: "validade", width: 12, style: { numFmt: "dd/mm/yyyy" } },
+      { header: "Dias para vencer", key: "dias", width: 16 }, { header: "Quantidade (UN)", key: "un", width: 16 },
+    ];
+    for (const x of v.linhas) {
+      const f = FAIXAS.find((y) => y.k === x.faixa);
+      const d = dataLocal(x.validade);
+      const r = ws.addRow({ faixa: f.nome, seq: x.seq, desc: x.desc, local: x.local === "deposito" ? "Depósito" : "Loja",
+        validade: new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())), dias: x.dias, un: x.un });
+      r.getCell("faixa").fill = { type: "pattern", pattern: "solid", fgColor: { argb: f.xl } };
+    }
+    cab(ws);
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 7 } };
+
+    const wg = wb.addWorksheet("Giro errado", { views: [{ state: "frozen", ySplit: 1 }] });
+    wg.columns = [{ header: "Código", key: "seq", width: 11 }, { header: "Produto", key: "desc", width: 44 },
+      { header: "Depósito vence em (dias)", key: "dep", width: 24 }, { header: "Prateleira vence em (dias)", key: "loja", width: 25 },
+      { header: "Ação", key: "acao", width: 38 }];
+    v.giro.forEach((g) => wg.addRow({ ...g, acao: "Trazer o do depósito para a frente" }));
+    cab(wg);
+    wg.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 5 } };
+
+    const wr = wb.addWorksheet("Resumo");
+    wr.columns = [{ width: 40 }, { width: 12 }, { width: 14 }];
+    wr.addRow([lote.nome]).font = { bold: true, size: 13 };
+    wr.addRow([`Loja: ${lote.loja?.nome || ""} · gerado em ${new Date().toLocaleString("pt-BR")}`]);
+    wr.addRow([]);
+    const h = wr.addRow(["Faixa", "Registros", "Unidades"]); h.font = { bold: true };
+    FAIXAS.forEach((f) => {
+      const it = v.linhas.filter((x) => x.faixa === f.k);
+      const r = wr.addRow([`${f.nome} (${f.txt})`, it.length, it.reduce((a, x) => a + x.un, 0)]);
+      r.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: f.xl } };
+    });
+    if (v.fora) wr.addRow([`Acima de ${LIMITE_VALIDADE} dias (não listados)`, v.fora]);
+
+    const buf = await wb.xlsx.writeBuffer();
+    const nome = ("Validade " + lote.nome).replace(/[\\/:*?"<>|]/g, "-") + ".xlsx";
+    const url = URL.createObjectURL(new Blob([buf],
+      { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = nome;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    aviso("Não consegui montar o Excel: " + e.message);
+  } finally {
+    b.disabled = false; b.textContent = "Baixar Excel da validade";
+  }
+}
+$("btn-excel-validade").addEventListener("click", baixarExcelValidade);
 
 $("btn-gerar").addEventListener("click", gerar);
 $("btn-marcar-todos").addEventListener("click", marcarTodosDivergentes);

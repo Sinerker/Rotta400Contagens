@@ -150,6 +150,19 @@
   </div>
 </div>
 
+<!-- Aviso: inventários abertos (aparece toda vez que criar um novo) -->
+<div class="fundo-modal" id="modal-abertos">
+  <div class="modal modal--trava" role="alertdialog" aria-labelledby="titulo-abertos">
+    <div class="modal-topo"><h2 id="titulo-abertos">Inventários abertos</h2></div>
+    <p class="fraco">Feche ou exclua os inventários que já terminou antes de abrir outro.</p>
+    <div class="lista" id="lista-abertos"></div>
+    <div class="linha-botoes">
+      <button class="btn btn--2" id="abertos-voltar">Voltar</button>
+      <button class="btn" id="abertos-ciente">Ciente, criar novo inventário</button>
+    </div>
+  </div>
+</div>
+
 <script src="config.js"></script>
 <script src="api.js"></script>
 <script src="pwa.js"></script>

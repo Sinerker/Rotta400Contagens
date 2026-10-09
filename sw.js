@@ -12,7 +12,7 @@
    ============================================= */
 // SEMPRE suba este número ao publicar: é ele que faz o navegador
 // perceber a versão nova e trocar sozinho (ver pwa.js).
-const VERSAO = "v11";
+const VERSAO = "v14";
 const CACHE = `contagens-${VERSAO}`;
 
 const ESQUELETO = [

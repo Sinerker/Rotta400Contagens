@@ -88,18 +88,73 @@ $("trocar-modo").addEventListener("click", trocarModo);
   $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") fazerLogin(); }));
 $("loja").addEventListener("keydown", (e) => { if (e.key === "Enter") $("senha").focus(); });
 $("btn-sair").addEventListener("click", sair);
-$("btn-novo").addEventListener("click", () => {
+$("btn-novo").addEventListener("click", async () => {
   // O auditor cria no lugar de uma loja: a loja do filtro vai junto.
+  let lojaId;
   if (ehAuditor) {
     const id = $("filtro-loja").value;
     if (!id) { aviso("Escolha uma loja no filtro antes de criar um inventário"); return; }
     sessionStorage.setItem("r400_loja_alvo",
       JSON.stringify({ id, nome: lojasPorId.get(id)?.nome || "" }));
+    lojaId = id;
   } else {
     sessionStorage.removeItem("r400_loja_alvo");
+    lojaId = perfil()?.loja_id;
   }
+  // Tem inventário aberto? Avisa toda vez, e só segue depois do "Ciente".
+  const b = $("btn-novo");
+  b.disabled = true;
+  try {
+    const abertos = lojaId ? await buscarAbertos(lojaId) : [];
+    if (abertos.length) { mostrarAbertos(abertos, lojaId); return; }
+  } catch { /* sem internet: segue sem o aviso */ }
+  finally { b.disabled = false; }
   location.href = "importar.html";
 });
+
+/* ---------- aviso de inventários abertos ---------- */
+async function buscarAbertos(lojaId) {
+  return api(`lote?select=id,nome,criado_em,contagem(count)&status=eq.aberto&loja_id=eq.${lojaId}&order=criado_em`);
+}
+function haQuanto(iso) {
+  const d = Math.floor((Date.now() - new Date(iso)) / 864e5);
+  return d <= 0 ? "aberto hoje" : d === 1 ? "aberto há 1 dia" : `aberto há ${d} dias`;
+}
+function mostrarAbertos(abertos, lojaId) {
+  const n = abertos.length;
+  $("titulo-abertos").textContent = n === 1 ? "Você tem 1 inventário aberto" : `Você tem ${n} inventários abertos`;
+  $("lista-abertos").innerHTML = abertos.map((l) => {
+    const qtd = l.contagem?.[0]?.count ?? 0;
+    return `<div class="item" style="gap:.35rem">
+      <span class="item-desc">${l.nome}</span>
+      <span class="item-info">${haQuanto(l.criado_em)} · ${qtd} lançamento${qtd === 1 ? "" : "s"}</span>
+      <span class="linha-botoes">${qtd > 0
+        ? `<button class="btn btn--2" data-ab-fechar="${l.id}">Fechar e conferir</button>`
+        : `<button class="btn btn--2" data-ab-excluir="${l.id}" style="color:var(--falta)">Excluir</button>`}</span>
+    </div>`;
+  }).join("");
+  $("lista-abertos").querySelectorAll("[data-ab-fechar]").forEach((x) => x.addEventListener("click", () => {
+    sessionStorage.setItem("r400_lote", x.dataset.abFechar);
+    location.href = "divergencias.html";
+  }));
+  $("lista-abertos").querySelectorAll("[data-ab-excluir]").forEach((x) => x.addEventListener("click", async () => {
+    x.disabled = true; x.textContent = "Excluindo…";
+    try {
+      await rpc("excluir_lote_vazio", { p_lote: x.dataset.abExcluir });
+      aviso("Inventário excluído", "ok");
+      carregarLotes();
+      const resto = await buscarAbertos(lojaId);
+      if (resto.length) mostrarAbertos(resto, lojaId);
+      else { $("modal-abertos").classList.remove("aberto"); location.href = "importar.html"; }
+    } catch (e) {
+      aviso("Não foi possível excluir: " + e.message);
+      x.disabled = false; x.textContent = "Excluir";
+    }
+  }));
+  $("modal-abertos").classList.add("aberto");
+}
+$("abertos-ciente").addEventListener("click", () => { location.href = "importar.html"; });
+$("abertos-voltar").addEventListener("click", () => $("modal-abertos").classList.remove("aberto"));
 
 /* ---------- hub ---------- */
 async function iniciar() {

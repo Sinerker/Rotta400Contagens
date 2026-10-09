@@ -249,3 +249,57 @@ main.largo #caixa-res > :not(.tabela-rolagem){width:100%;max-width:900px;align-s
    Saiu ~865px, e só com o essencial ~730px. Os cortes seguem isso. */
 @media (max-width:980px){ .tabela-comp .col-saiu{display:none} }
 @media (max-width:900px){ .tabela-comp .col-crua{display:none} }
+
+/* =============================================
+   Regras novas (inventários criados a partir de agora)
+   ============================================= */
+
+/* rótulo da embalagem: UNIDADE ou PACOTE C/10, bem visível */
+.emb{display:inline-flex;align-items:center;font-size:.72rem;font-weight:800;letter-spacing:.05em;
+  padding:.12rem .5rem;border-radius:6px;white-space:nowrap;vertical-align:middle}
+/* cores fortes de propósito: tem que saltar aos olhos no coletor */
+.emb--un{background:#0b5ed7;color:#fff;border:2px solid #0b5ed7}
+.emb--pac{background:#e8600c;color:#fff;border:2px solid #e8600c;box-shadow:0 0 0 2px #ffd166}
+.emb--grande{font-size:1.15rem;padding:.3rem .85rem;border-radius:8px;letter-spacing:.06em}
+
+/* local da contagem: fica marcado até trocar */
+.local{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;border-radius:10px;
+  background:var(--caixa);border:1.5px solid var(--linha)}
+.local button{font:inherit;font-weight:800;letter-spacing:.04em;border:0;border-radius:8px;
+  padding:.6rem .4rem;background:transparent;color:var(--texto2);cursor:pointer}
+.local button[aria-pressed="true"]{background:var(--texto);color:var(--caixa)}
+.local-dica{font-size:.76rem;color:var(--fraco);text-align:center;margin-top:-.6rem}
+.local-chip{font-size:.66rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--texto2);background:var(--caixa2);border:1px solid var(--linha);border-radius:4px;padding:0 .3rem}
+
+/* etapa das datas de validade */
+.datas{border:2px solid var(--azul);border-radius:10px;padding:.75rem;display:flex;flex-direction:column;gap:.55rem;background:var(--caixa)}
+.datas-cab{display:flex;justify-content:space-between;align-items:baseline;gap:.5rem}
+.faltam-q{font-family:ui-monospace,monospace;font-weight:700;font-size:.85rem;padding:.1rem .45rem;border-radius:6px;
+  background:color-mix(in srgb,var(--atencao) 22%,transparent)}
+.faltam-q.ok{background:color-mix(in srgb,var(--sobra) 22%,transparent)}
+.data-linha{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:.5rem;align-items:center;font-size:.9rem;
+  border:1px solid var(--linha);border-radius:8px;padding:.35rem .5rem;background:var(--caixa2)}
+.data-linha .q{font-family:ui-monospace,monospace;font-weight:700}
+.data-x{border:0;background:none;color:var(--falta);cursor:pointer;font-size:1.15rem;line-height:1;padding:.1rem .35rem;border-radius:5px}
+.data-nova{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:.45rem}
+.data-interp{font-size:.8rem;min-height:1.2em;font-family:ui-monospace,monospace;color:var(--fraco)}
+.data-interp.ok{color:var(--sobra)} .data-interp.ruim{color:var(--falta)}
+
+/* chips de validade, cor pela faixa */
+.vchip{display:inline-flex;font-family:ui-monospace,monospace;font-size:.72rem;border-radius:5px;padding:.05rem .4rem;
+  border:1px solid currentColor;white-space:nowrap}
+.f-venc{color:var(--falta)} .f-urg{color:#d4600f} .f-at{color:var(--atencao)} .f-ac{color:var(--azul)} .f-norm{color:var(--fraco)}
+.chips{display:flex;flex-wrap:wrap;gap:.25rem;margin-top:.15rem}
+
+/* editor do "Já contei" */
+.editor{display:flex;flex-direction:column;gap:.55rem;border:2px solid var(--azul);border-radius:10px;padding:.7rem;background:var(--azul-claro)}
+.editor .linha-botoes .btn{min-width:0}
+
+/* faltam contar por local */
+.falta-local{font-size:.76rem;font-weight:700;color:var(--atencao)}
+.btn-pequeno{font:inherit;font-size:.8rem;font-weight:600;border:1.5px solid var(--linha);background:var(--caixa);
+  color:var(--texto);border-radius:7px;padding:.3rem .55rem;cursor:pointer}
+
+/* modal que não fecha tocando fora */
+.modal--trava{border-top:5px solid var(--atencao)}
