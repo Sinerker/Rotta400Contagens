@@ -859,9 +859,25 @@ function ligarEditor(redesenhar) {
       f.className = "faltam-q" + (falta === 0 ? " ok" : "");
       f.textContent = falta === 0 ? "tudo com data" : (falta > 0 ? "faltam " : "passou ") + numeroBR(Math.abs(falta)); }
   };
+  // Quantidade nova MENOR que a soma das datas: as datas antigas não servem
+  // mais (10 com data, corrigiu para 2). Apaga e pede as datas de novo.
+  // Só confere ao sair do campo ou no Enter — enquanto digita "12", o "1"
+  // no meio do caminho não pode apagar nada.
+  const ajustarDatas = () => {
+    if (!e.comDatas || !(e.total > 0) || somaLista(e.lista) <= +Number(e.total).toFixed(3)) return false;
+    e.lista = [];
+    aviso("Quantidade menor: as datas anteriores foram apagadas. Digite as datas de novo.", "alerta");
+    redesenhar(); focarEditor();
+    return true;
+  };
   $("ed-total").addEventListener("input", (ev) => { e.total = Number(ev.target.value) || 0; atualizarBotao(); });
+  $("ed-total").addEventListener("blur", (ev) => {
+    if (ev.relatedTarget?.id === "ed-cancelar") return;   // cancelando: não mexe
+    ajustarDatas();
+  });
   $("ed-total").addEventListener("keydown", (ev) => {
     if (ev.key !== "Enter") return; ev.preventDefault();
+    if (ajustarDatas()) return;
     if (podeSalvarEditor()) salvarEditor(redesenhar);
     else if (e.comDatas) $("ed-data")?.focus();
   });
