@@ -120,3 +120,21 @@ function aviso(msg, tipo = "erro") {
   setTimeout(() => d.classList.add("saindo"), 2600);
   setTimeout(() => d.remove(), 3000);
 }
+
+/* ---- tecla Enter do teclado na tela ----
+   Nos coletores, o teclado mostrava "Ir", lupa ou ✓ conforme o campo.
+   Aqui todos os campos pedem a tecla Enter (↵), inclusive os que as
+   telas criam depois (datas, edição do "Já contei"). */
+(function teclaEnter() {
+  const marcar = (raiz) => {
+    if (!raiz.querySelectorAll) return;
+    if (raiz.matches?.("input, textarea")) raiz.setAttribute("enterkeyhint", "enter");
+    raiz.querySelectorAll("input, textarea").forEach((el) => el.setAttribute("enterkeyhint", "enter"));
+  };
+  const iniciar = () => {
+    marcar(document);
+    new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach(marcar)))
+      .observe(document.body, { childList: true, subtree: true });
+  };
+  if (document.body) iniciar(); else document.addEventListener("DOMContentLoaded", iniciar);
+})();

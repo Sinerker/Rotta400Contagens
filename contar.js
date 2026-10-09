@@ -584,6 +584,15 @@ function desenharDatas() {
    Soma tudo o que já foi contado do produto (loja + depósito, pacotes em
    unidades) e compara com o estoque do sistema. Não mostra número nenhum. */
 let estoquePendente = null;
+let voltarParaContagem = false;   // correção aberta pelo aviso de estoque
+
+// Fecha o "Já contei" e deixa pronto para bipar o próximo produto.
+function voltarAContar() {
+  voltarParaContagem = false;
+  editando = null;
+  $("modal-historico").classList.remove("aberto");
+  focarCodigo();
+}
 function verificarEstoque(seq, chave) {
   const it = porSeq.get(seq);
   if (!it || it.qtd == null || it.fora) return;
@@ -603,6 +612,7 @@ function fecharEstoque() {
 $("estoque-manter").addEventListener("click", () => { fecharEstoque(); estoquePendente = null; focarCodigo(); });
 $("estoque-corrigir").addEventListener("click", () => {
   const chave = estoquePendente; fecharEstoque(); estoquePendente = null;
+  voltarParaContagem = true;          // terminou a correção: volta direto a contar
   abrirHistorico(chave);
 });
 
@@ -885,7 +895,10 @@ function ligarEditor(redesenhar) {
     e.tipo = x; $("ed-loja").setAttribute("aria-pressed", x === "loja");
     $("ed-deposito").setAttribute("aria-pressed", x === "deposito");
   }));
-  $("ed-cancelar").addEventListener("click", () => { editando = null; redesenhar(); });
+  $("ed-cancelar").addEventListener("click", () => {
+    if (voltarParaContagem) { voltarAContar(); return; }
+    editando = null; redesenhar();
+  });
   $("ed-salvar").addEventListener("click", () => salvarEditor(redesenhar));
 
   if (!e.comDatas) return;
@@ -954,7 +967,7 @@ async function salvarEditor(redesenhar) {
     editando = null;
     atualizarCabecalho();
     enviar(true);
-    redesenhar();
+    if (voltarParaContagem) voltarAContar(); else redesenhar();
   }
 }
 
@@ -989,7 +1002,8 @@ $("btn-faltam").addEventListener("click", abrirFaltam);
 $("btn-historico").addEventListener("click", () => abrirHistorico());
 
 [["fechar-faltam", "modal-faltam"], ["fechar-historico", "modal-historico"]].forEach(([b, m]) => {
-  const fechar = () => { $(m).classList.remove("aberto"); if (m === "modal-historico") editando = null; focarCodigo(); };
+  const fechar = () => { $(m).classList.remove("aberto");
+    if (m === "modal-historico") { editando = null; voltarParaContagem = false; } focarCodigo(); };
   $(b).addEventListener("click", fechar);
   $(m).addEventListener("click", (e) => { if (e.target === e.currentTarget) fechar(); });
 });
