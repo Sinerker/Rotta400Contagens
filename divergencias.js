@@ -296,17 +296,37 @@ function irParaRecontagem() {
   location.href = "importar.html";
 }
 
+/* ---------- EAN para as planilhas ----------
+   Um EAN por produto CONTADO, escolhido no banco (ean_do_lote): o que
+   foi bipado quando ele é o unitário, senão o unitário do cadastro.
+   Produto não contado não vem na lista — a célula sai vazia, de propósito.
+   Se a função não existir no banco, a planilha sai igual, só sem EAN. */
+let eans = null;
+async function carregarEans() {
+  if (eans) return eans;
+  try {
+    const r = await rpc("ean_do_lote", { p_lote: loteId });
+    eans = new Map(r.filter((x) => x.seqproduto != null)
+                    .map((x) => [String(x.seqproduto), x.ean || ""]));
+  } catch (e) {
+    eans = new Map();
+  }
+  return eans;
+}
+const eanDe = (seq) => (seq == null ? "" : (eans && eans.get(String(seq))) || "");
+
 /* ---------- Excel ---------- */
 async function baixarExcel() {
   const b = $("btn-excel");
   b.disabled = true; b.textContent = "Montando…";
   try {
     await carregarExcelJS();
+    await carregarEans();
     const comp = comparativoLigado();
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("Divergências");
 
-    const ultimaCol = comp ? "K" : "F";
+    const ultimaCol = comp ? "L" : "G";
     ws.mergeCells(`A1:${ultimaCol}1`);
     ws.getCell("A1").value = lote.nome;
     ws.getCell("A1").font = { bold: true, size: 14 };
@@ -318,10 +338,10 @@ async function baixarExcel() {
     ws.getCell("A2").font = { size: 10, color: { argb: "FF666666" } };
 
     const cab = comp
-      ? ["Situação", "Veredito", "Código", "Produto",
+      ? ["Situação", "Veredito", "Código", "EAN", "Produto",
          "Sist. 1ª", "Cont. 1ª", "Dif 1ª", "Saiu",
          "Sistema", "Contado", "Diferença"]
-      : ["Situação", "Código", "Produto", "Qtd Sistema", "Qtd Contada", "Diferença"];
+      : ["Situação", "Código", "EAN", "Produto", "Qtd Sistema", "Qtd Contada", "Diferença"];
     ws.addRow([]);
     ws.addRow(cab);
     const rc = ws.lastRow;
@@ -338,8 +358,9 @@ async function baixarExcel() {
       .forEach((l) => {
         const c = comp ? comparar(l) : null;
         const base = comp
-          ? [ROTULOS[l.situacao].txt, VEREDITOS[c.chave].txt, l.seqproduto ?? "", l.descricao]
-          : [ROTULOS[l.situacao].txt, l.seqproduto ?? "", l.descricao];
+          ? [ROTULOS[l.situacao].txt, VEREDITOS[c.chave].txt, l.seqproduto ?? "",
+             eanDe(l.seqproduto), l.descricao]
+          : [ROTULOS[l.situacao].txt, l.seqproduto ?? "", eanDe(l.seqproduto), l.descricao];
         const meio = comp ? [
           c.o && c.o.qtd_sistema != null ? Number(c.o.qtd_sistema) : "",
           c.o ? Number(c.o.qtd_contada || 0) : "",
@@ -357,7 +378,8 @@ async function baixarExcel() {
           c2.fill = { type: "pattern", pattern: "solid", fgColor: { argb: cor } };
           c2.border = { bottom: { style: "hair", color: { argb: "FFCCCCCC" } } };
         });
-        r.getCell(comp ? 11 : 6).font = { bold: true };   // Diferença
+        r.getCell(comp ? 4 : 3).numFmt = "@";               // EAN é TEXTO: não come o zero à esquerda
+        r.getCell(comp ? 12 : 7).font = { bold: true };      // Diferença
         if (comp) {
           r.getCell(2).fill = {                            // Veredito
             type: "pattern", pattern: "solid",
@@ -368,10 +390,11 @@ async function baixarExcel() {
       });
 
     ws.columns = comp
-      ? [{ width: 16 }, { width: 22 }, { width: 11 }, { width: 42 },
+      ? [{ width: 16 }, { width: 22 }, { width: 11 }, { width: 16 }, { width: 42 },
          { width: 10 }, { width: 10 }, { width: 9 }, { width: 8 },
          { width: 10 }, { width: 10 }, { width: 11 }]
-      : [{ width: 16 }, { width: 11 }, { width: 46 }, { width: 13 }, { width: 13 }, { width: 12 }];
+      : [{ width: 16 }, { width: 11 }, { width: 16 }, { width: 46 },
+         { width: 13 }, { width: 13 }, { width: 12 }];
     ws.views = [{ state: "frozen", ySplit: rc.number }];
     ws.autoFilter = { from: { row: rc.number, column: 1 },
                       to: { row: rc.number, column: cab.length } };
@@ -492,6 +515,7 @@ async function baixarExcelValidade() {
   b.disabled = true; b.textContent = "Montando…";
   try {
     await carregarExcelJS();
+    await carregarEans();
     const v = validade;
     const wb = new ExcelJS.Workbook();
     const cab = (ws) => ws.getRow(1).eachCell((c) => {
@@ -502,6 +526,7 @@ async function baixarExcelValidade() {
     const ws = wb.addWorksheet("Validades", { views: [{ state: "frozen", ySplit: 1 }] });
     ws.columns = [
       { header: "Faixa", key: "faixa", width: 32 }, { header: "Código", key: "seq", width: 11 },
+      { header: "EAN", key: "ean", width: 16, style: { numFmt: "@" } },
       { header: "Produto", key: "desc", width: 44 }, { header: "Local", key: "local", width: 11 },
       { header: "Validade", key: "validade", width: 12, style: { numFmt: "dd/mm/yyyy" } },
       { header: "Dias para vencer", key: "dias", width: 16 }, { header: "Quantidade (UN)", key: "un", width: 16 },
@@ -509,20 +534,22 @@ async function baixarExcelValidade() {
     for (const x of v.linhas) {
       const f = FAIXAS.find((y) => y.k === x.faixa);
       const d = dataLocal(x.validade);
-      const r = ws.addRow({ faixa: f.nome, seq: x.seq, desc: x.desc, local: x.local === "deposito" ? "Depósito" : "Loja",
+      const r = ws.addRow({ faixa: f.nome, seq: x.seq, ean: eanDe(x.seq), desc: x.desc, local: x.local === "deposito" ? "Depósito" : "Loja",
         validade: new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())), dias: x.dias, un: x.un });
       r.getCell("faixa").fill = { type: "pattern", pattern: "solid", fgColor: { argb: f.xl } };
     }
     cab(ws);
-    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 7 } };
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 8 } };
 
     const wg = wb.addWorksheet("Giro errado", { views: [{ state: "frozen", ySplit: 1 }] });
-    wg.columns = [{ header: "Código", key: "seq", width: 11 }, { header: "Produto", key: "desc", width: 44 },
+    wg.columns = [{ header: "Código", key: "seq", width: 11 },
+      { header: "EAN", key: "ean", width: 16, style: { numFmt: "@" } },
+      { header: "Produto", key: "desc", width: 44 },
       { header: "Depósito vence em (dias)", key: "dep", width: 24 }, { header: "Prateleira vence em (dias)", key: "loja", width: 25 },
       { header: "Ação", key: "acao", width: 38 }];
-    v.giro.forEach((g) => wg.addRow({ ...g, acao: "Trazer o do depósito para a frente" }));
+    v.giro.forEach((g) => wg.addRow({ ...g, ean: eanDe(g.seq), acao: "Trazer o do depósito para a frente" }));
     cab(wg);
-    wg.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 5 } };
+    wg.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 6 } };
 
     const wr = wb.addWorksheet("Resumo");
     wr.columns = [{ width: 40 }, { width: 12 }, { width: 14 }];
