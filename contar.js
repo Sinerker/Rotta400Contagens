@@ -785,4 +785,24 @@ window.addEventListener("beforeunload", (e) => {
   if (pendentes().length) { e.preventDefault(); e.returnValue = ""; }
 });
 
+/* ---------- atualizar sozinho ----------
+   Saiu versão nova do site: o pwa.js pergunta AQUI se já dá para recarregar
+   a página. Recarregar no meio de um bipe perderia o que está na tela, então
+   só vale com a tela limpa, nada pendente de envio e dois minutos sem
+   ninguém tocar no aparelho. Quem não quiser esperar usa a barra azul. */
+const PARADO_PARA_ATUALIZAR = 2 * 60 * 1000;
+let ultimoToque = Date.now();
+["keydown", "pointerdown", "touchstart"].forEach((ev) =>
+  document.addEventListener(ev, () => { ultimoToque = Date.now(); },
+                            { capture: true, passive: true }));
+
+window.podeRecarregar = () => {
+  if (!pacote) return false;                                     // ainda carregando
+  if (selecionado || editando || estoquePendente) return false;  // no meio de alguma coisa
+  if (enviando || pendentes().length) return false;              // tem contagem para subir
+  if ($("codigo").value.trim()) return false;                    // código digitado, não lançado
+  if (document.querySelector(".fundo-modal.aberto")) return false;
+  return Date.now() - ultimoToque >= PARADO_PARA_ATUALIZAR;
+};
+
 carregar();
