@@ -298,17 +298,6 @@ $("modal-semean").addEventListener("click", (e) => {
   if (e.target === e.currentTarget) e.currentTarget.classList.remove("aberto");
 });
 
-/* ---------- validade ----------
-   Não é escolha de quem cria: vale para as lojas marcadas no banco
-   (loja.confere_validade). Hoje só o piloto, a 303. */
-async function lojaConfereValidade(lojaId) {
-  if (!lojaId) return false;
-  try {
-    const [l] = await api(`loja?select=confere_validade&id=eq.${lojaId}`);
-    return !!l?.confere_validade;
-  } catch { return false; }
-}
-
 /* ---------- criar o lote ---------- */
 async function criar() {
   if (!analise) return;
@@ -329,7 +318,6 @@ async function criar() {
         total_declarado: analise.soma,
         origem_id: recontagem ? recontagem.origemId : null,
         regras: 2,                                   // loja/depósito, faltam por local, aviso de estoque
-        confere_validade: await lojaConfereValidade(lojaId),
       }),
     });
 
@@ -425,9 +413,6 @@ $("btn-criar").addEventListener("click", criar);
       sessionStorage.removeItem("r400_recontagem");
     });
   }
-
-  const lojaId = lojaAlvo?.id || perfil()?.loja_id;
-  if (await lojaConfereValidade(lojaId)) $("aviso-validade").classList.remove("oculto");
 
   $("colagem").focus();
 })();

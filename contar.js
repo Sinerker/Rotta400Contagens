@@ -13,8 +13,6 @@
    - todo lançamento diz se é da LOJA ou do DEPÓSITO;
    - "Faltam contar" só tira o produto depois dos dois locais;
    - contou acima do estoque do sistema -> aviso que trava até conferir.
-   Com lote.confere_validade, depois da quantidade vem a etapa das datas:
-   um lançamento com 3 datas vira 3 linhas com o mesmo grupo_id.
    ============================================= */
 const $ = (id) => document.getElementById(id);
 if (!exigirLogin()) throw new Error("sem login");
@@ -27,11 +25,9 @@ let contagens = [];           // tudo o que este aparelho conhece
 let selecionado = null;       // { item, emb, ean }
 let ultimo = null;            // linhas do último lançamento (array)
 let editando = null;          // estado do editor do "Já contei"
-let etapaDatas = null;        // estado da etapa das datas
 const dispositivo = obterDispositivo();
 
-const R2  = () => (pacote?.lote?.regras || 1) >= 2;
-const VAL = () => !!pacote?.lote?.confere_validade;
+const R2 = () => (pacote?.lote?.regras || 1) >= 2;
 const chaveLocal = () => "r400_local_" + loteId;
 let local = (() => { try { return localStorage.getItem(chaveLocal()) || "loja"; } catch { return "loja"; } })();
 
@@ -87,76 +83,6 @@ function numDigitado(v) {
   const t = String(v ?? "").trim().replace(/\s/g, "");
   if (!/^-?\d+([.,]\d+)?$/.test(t)) return NaN;
   return Number(t.replace(",", "."));
-}
-
-/* ---------- datas ---------- */
-const hoje = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
-const isoDe = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const deIso = (s) => { const [a, m, d] = String(s).slice(0, 10).split("-").map(Number); return new Date(a, m - 1, d); };
-const dataBR = (s, curto) => deIso(s).toLocaleDateString("pt-BR",
-  { day: "2-digit", month: "2-digit", year: curto ? "2-digit" : "numeric" });
-const diasAte = (s) => Math.round((deIso(s) - hoje()) / 86400000);
-const faixa = (s) => { const d = diasAte(s);
-  return d <= 0 ? "f-venc" : d <= 7 ? "f-urg" : d <= 15 ? "f-at" : d <= 30 ? "f-ac" : "f-norm"; };
-const chipData = (iso, q) => `<span class="vchip ${faixa(iso)}">${q != null ? numeroBR(q) + " × " : ""}${dataBR(iso, true)}</span>`;
-
-// Põe as barras enquanto digita: 101026 -> 10/10/26 · 1010 -> 10/10 · 10102026 -> 10/10/2026
-function mascaraData(input) {
-  // Não depende de inputType (alguns coletores e teclados não mandam):
-  // só deixa de formatar quando a última tecla foi de apagar.
-  let apagando = false;
-  const formatar = () => {
-    if (apagando) return;
-    const d = input.value.replace(/\D/g, "").slice(0, 8);
-    const f = d.length <= 2 ? d : d.length <= 4 ? `${d.slice(0, 2)}/${d.slice(2)}`
-      : `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
-    if (f !== input.value) {
-      input.value = f;
-      try { input.setSelectionRange(f.length, f.length); } catch {}
-    }
-  };
-  input.addEventListener("keydown", (ev) => { apagando = ev.key === "Backspace" || ev.key === "Delete"; });
-  input.addEventListener("input", (ev) => {
-    if (ev.inputType && ev.inputType.startsWith("delete")) return;
-    formatar();
-  });
-  input.addEventListener("keyup", () => { formatar(); apagando = false; });
-  input.addEventListener("paste", () => setTimeout(() => { apagando = false; formatar(); }, 0));
-}
-
-/* Formatos aceitos:
-   DDMMAA (101026) · DDMMAAAA · DDMM (1010: completa o ano) · MMAA (1026: só mês/ano = último dia do mês) */
-function lerData(txt) {
-  const v = String(txt || "").replace(/\D/g, "");
-  if (!v) return null;
-  const valida = (a, m, d) => { const x = new Date(a, m - 1, d);
-    return x.getFullYear() === a && x.getMonth() === m - 1 && x.getDate() === d ? x : null; };
-  if (v.length === 6 || v.length === 8) {
-    const d = +v.slice(0, 2), m = +v.slice(2, 4), a = v.length === 6 ? 2000 + +v.slice(4) : +v.slice(4);
-    const x = valida(a, m, d);
-    return x ? { iso: isoDe(x), como: "" } : { erro: "Data inválida" };
-  }
-  if (v.length === 4) {
-    const p1 = +v.slice(0, 2), p2 = +v.slice(2);
-    if (p2 >= 1 && p2 <= 12) {                         // DDMM
-      const h = hoje(); let x = valida(h.getFullYear(), p2, p1);
-      if (!x) return { erro: "Data inválida" };
-      if ((h - x) / 86400000 > 60) x = valida(h.getFullYear() + 1, p2, p1);
-      return { iso: isoDe(x), como: "ano completado" };
-    }
-    if (p1 >= 1 && p1 <= 12) return { iso: isoDe(new Date(2000 + p2, p1, 0)), como: "só mês/ano → último dia" };
-    return { erro: "Data inválida" };
-  }
-  return { erro: "Digite DDMMAA, DDMM ou MMAA" };
-}
-function textoData(r) {
-  if (!r) return { cls: "", txt: "" };
-  if (r.erro) return { cls: "ruim", txt: r.erro };
-  const d = diasAte(r.iso);
-  let txt = `= ${dataBR(r.iso)}${r.como ? " (" + r.como + ")" : ""} · `;
-  if (d < 0) return { cls: "ruim", txt: txt + `VENCIDO há ${-d} dia${d === -1 ? "" : "s"}` };
-  if (d === 0) return { cls: "ruim", txt: txt + "vence HOJE" };
-  return { cls: "ok", txt: txt + `vence em ${d} dia${d === 1 ? "" : "s"}` };
 }
 
 /* ---------- carga ---------- */
@@ -231,7 +157,7 @@ function montarIndices() {
 // traz contagens que já estão no servidor (outro aparelho, ou este antes de limpar)
 async function puxarDoServidor() {
   const remotas = await api(
-    `contagem?select=id,lote_id,seqproduto,ean_lido,quantidade,qtd_embalagem,tipo,dispositivo,criado_em,cancela_id,validade,grupo_id` +
+    `contagem?select=id,lote_id,seqproduto,ean_lido,quantidade,qtd_embalagem,tipo,dispositivo,criado_em,cancela_id,grupo_id` +
     `&lote_id=eq.${loteId}&limit=20000`);
   const locais = await contagensDoLote(loteId);
   const idsLocais = new Set(locais.map((c) => c.id));
@@ -317,7 +243,6 @@ function procurar(txt) {
 
 function aoEnter(e) {
   if (e.key !== "Enter") return;
-  if (etapaDatas) return;
   const v = $("codigo").value.trim();
   if (!v) return;
 
@@ -384,7 +309,7 @@ function selecionar(a, soCartao) {
   } else jc.classList.add("oculto");
 
   $("caixa-qtd").style.display = "flex";
-  $("btn-lancar").textContent = VAL() ? "Próximo: validade" : "Lançar";
+  $("btn-lancar").textContent = "Lançar";
   const q = $("quantidade");
   q.value = $("qtde1").checked ? "1" : "";     // NUNCA o total anterior
   if ($("qtde1").checked) { lancar(); return; }
@@ -447,37 +372,34 @@ async function lancar() {
   if (Number.isNaN(qtd) || qtd < 0 || Math.abs(qtd) > 999999) { aviso("Quantidade inválida"); bip("erro"); return; }
   if (qtd === 0) { limpar(); return; }
 
-  if (VAL()) { abrirDatas(qtd); return; }
-  await gravarLancamento([{ validade: null, q: qtd }]);
+  await gravarLancamento(qtd);
 }
 
-// Grava as linhas de um lançamento (uma por data) e faz as conferências.
-async function gravarLancamento(lista) {
+// Grava o lançamento e faz as conferências.
+async function gravarLancamento(qtd) {
   const s = selecionado;
-  const gid = VAL() ? novoId() : null;
-  const agora = new Date().toISOString();
-  const linhas = lista.map((x) => ({
+  const linha = {
     id: novoId(),
     lote_id: loteId,
     seqproduto: String(s.item.seq),
     ean_lido: s.ean || null,
-    quantidade: x.q,                                   // CRU, como digitado
+    quantidade: qtd,                                   // CRU, como digitado
     qtd_embalagem: s.emb || 1,
     tipo: R2() ? local : "loja",
     dispositivo,
-    criado_em: agora,
+    criado_em: new Date().toISOString(),
     cancela_id: null,
-    validade: x.validade || null,
-    grupo_id: gid,
+    grupo_id: null,
     enviada: 0,
-  }));
+  };
+  const linhas = [linha];
 
   await gravarVarias(linhas);
   contagens.push(...linhas);
   ultimo = linhas;
   bip("ok");
 
-  const total = lista.reduce((a, x) => a + x.q, 0);
+  const total = qtd;
   const emb = s.emb || 1;
   const totalAgora = unidadesDo(String(s.item.seq));
   $("caixa-ultimo").classList.remove("oculto");
@@ -486,10 +408,9 @@ async function gravarLancamento(lista) {
     <div>${rotuloEmb(emb, false, siglaDe(s.item.seq, emb, s.ean))} ${R2() ? rotuloLocal(linhas[0].tipo) : ""}</div>
     <div class="item-info">lançado ${numeroBR(total)}${
       emb !== 1 ? ` × ${numeroBR(emb)} = ${numeroBR(total * emb)} UN` : " UN"}</div>
-    ${linhas.some((l) => l.validade) ? `<div class="chips">${linhas.map((l) => chipData(l.validade, l.quantidade)).join("")}</div>` : ""}
     <div class="fraco">total deste produto agora: <b>${numeroBR(totalAgora)} UN</b></div>`;
 
-  const seq = String(s.item.seq), chave = gid || linhas[0].id;
+  const seq = String(s.item.seq), chave = linha.id;
   limpar();
   atualizarCabecalho();
   enviar(true);                                        // tenta em segundo plano
@@ -498,9 +419,6 @@ async function gravarLancamento(lista) {
 
 function limpar() {
   selecionado = null;
-  etapaDatas = null;
-  $("caixa-datas").classList.add("oculto");
-  $("caixa-datas").innerHTML = "";
   $("codigo").disabled = loteFechado();
   $("codigo").value = "";
   $("resultado").innerHTML = "";
@@ -511,84 +429,6 @@ function limpar() {
   focarCodigo();
 }
 function focarCodigo() { const c = $("codigo"); if (!c.disabled) { c.focus(); c.select(); } }
-
-/* ---------- etapa das datas ----------
-   Data + Enter vai para a quantidade; quantidade + Enter registra a data
-   (vazia = tudo o que falta). Quando a soma fecha o total, salva sozinho. */
-function abrirDatas(total) {
-  etapaDatas = { total, lista: [] };
-  $("caixa-qtd").style.display = "none";
-  $("codigo").disabled = true;
-  desenharDatas();
-}
-
-const somaLista = (l) => +l.reduce((a, x) => a + x.q, 0).toFixed(3);
-
-function desenharDatas() {
-  const e = etapaDatas, box = $("caixa-datas");
-  const falta = +(e.total - somaLista(e.lista)).toFixed(3);
-  const un = selecionado.emb !== 1 ? " pct" : " un";
-  box.classList.remove("oculto");
-  box.innerHTML = `<div class="datas">
-    <div class="datas-cab"><b>Validade · ${numeroBR(e.total)}${un}</b>
-      <span class="faltam-q">faltam ${numeroBR(falta)}</span></div>
-    ${e.lista.map((x, i) => `<div class="data-linha">${chipData(x.validade)}
-      <span class="q">${numeroBR(x.q)}${un}</span>
-      <button type="button" class="data-x" data-rm="${i}" aria-label="Tirar esta data">×</button></div>`).join("")}
-    <div class="data-nova">
-      <div class="campo"><label for="d-data">Data</label>
-        <input type="text" id="d-data" class="grande" inputmode="numeric" placeholder="DD/MM/AA" autocomplete="off"/></div>
-      <div class="campo"><label for="d-qtd">Qtd</label>
-        <input type="text" id="d-qtd" class="grande" inputmode="decimal" autocomplete="off" placeholder="${numeroBR(falta)}"/></div>
-    </div>
-    <div class="data-interp" id="d-interp">Data + Enter, depois Qtd + Enter (vazia = os ${numeroBR(falta)} que faltam)</div>
-    <button type="button" class="btn btn--2 btn--bloco" id="d-voltar">Voltar e corrigir a quantidade</button>
-  </div>`;
-
-  box.querySelectorAll("[data-rm]").forEach((b) => b.addEventListener("click", () => {
-    e.lista.splice(+b.dataset.rm, 1); desenharDatas();
-  }));
-  $("d-voltar").addEventListener("click", () => {
-    etapaDatas = null;
-    box.classList.add("oculto"); box.innerHTML = "";
-    $("codigo").disabled = false;
-    $("caixa-qtd").style.display = "flex";
-    $("quantidade").focus(); $("quantidade").select();
-  });
-
-  const dIn = $("d-data"), qIn = $("d-qtd"), info = $("d-interp");
-  mascaraData(dIn);
-  const mostrar = () => {
-    const r = lerData(dIn.value);
-    if (!r) { info.className = "data-interp";
-      info.textContent = `Data + Enter, depois Qtd + Enter (vazia = os ${numeroBR(falta)} que faltam)`; return null; }
-    const t = textoData(r); info.className = "data-interp " + t.cls; info.textContent = t.txt;
-    return r.erro ? null : r.iso;
-  };
-  dIn.addEventListener("input", mostrar);
-  dIn.addEventListener("keydown", (ev) => {
-    if (ev.key !== "Enter") return;
-    ev.preventDefault();
-    if (mostrar()) { qIn.focus(); qIn.select(); } else bip("erro");
-  });
-  qIn.addEventListener("keydown", (ev) => {
-    if (ev.key !== "Enter") return;
-    ev.preventDefault();
-    const iso = mostrar(); if (!iso) { dIn.focus(); bip("erro"); return; }
-    const q = qIn.value.trim() === "" ? falta : numDigitado(qIn.value);
-    if (!(q > 0)) { aviso("Quantidade inválida"); bip("erro"); return; }
-    if (q > falta) { aviso(`Passa do total: faltam só ${numeroBR(falta)}`); bip("erro"); qIn.select(); return; }
-    const ja = e.lista.find((x) => x.validade === iso);
-    if (ja) ja.q = +(ja.q + q).toFixed(3); else e.lista.push({ validade: iso, q });
-    e.lista.sort((a, b) => a.validade.localeCompare(b.validade));
-    if (somaLista(e.lista) === +e.total.toFixed(3)) {     // fechou o total: salva sozinho
-      const lista = e.lista;
-      etapaDatas = null;
-      gravarLancamento(lista);
-    } else desenharDatas();
-  });
-  dIn.focus();
-}
 
 /* ---------- aviso: contou acima do estoque ----------
    Soma tudo o que já foi contado do produto (loja + depósito, pacotes em
@@ -660,8 +500,11 @@ async function enviar(silencioso = false) {
   enviando = true;
   try {
     for (let k = 0; k < fila.length; k += 200) {
-      const bloco = fila.slice(k, k + 200).map(({ enviada, ...c }) =>
-        ({ validade: null, grupo_id: null, ...c }));   // todas as linhas com as mesmas colunas
+      // O "validade" sai aqui de propósito: aparelho que já contou na época da
+      // conferência de validade ainda tem linhas antigas guardadas com esse
+      // campo, e a coluna não existe mais no servidor.
+      const bloco = fila.slice(k, k + 200).map(({ enviada, validade, ...c }) =>
+        ({ grupo_id: null, ...c }));                   // todas as linhas com as mesmas colunas
       await api("contagem", {
         method: "POST",
         headers: { Prefer: "resolution=merge-duplicates" },
@@ -723,7 +566,7 @@ async function marcarSemProduto(seq, onde) {
   const reg = {
     id: novoId(), lote_id: loteId, seqproduto: String(seq), ean_lido: null,
     quantidade: 0, qtd_embalagem: 1, tipo: onde, dispositivo,
-    criado_em: new Date().toISOString(), cancela_id: null, validade: null, grupo_id: null, enviada: 0,
+    criado_em: new Date().toISOString(), cancela_id: null, grupo_id: null, enviada: 0,
   };
   await gravarContagem(reg);
   contagens.push(reg);
@@ -733,8 +576,9 @@ async function marcarSemProduto(seq, onde) {
 }
 
 /* ---------- já contei ----------
-   Cada lançamento é um GRUPO: as linhas com o mesmo grupo_id (uma por
-   data de validade). Lançamento antigo, sem grupo, é a própria linha. */
+   Cada lançamento é uma linha. Os inventários antigos, de quando havia
+   conferência de validade, têm lançamentos com várias linhas e o mesmo
+   grupo_id — por isso o agrupamento continua aqui. */
 function grupos() {
   const cx = canceladas();
   const mapa = new Map();
@@ -754,8 +598,6 @@ function grupos() {
       seq: base.seqproduto, emb: Number(base.qtd_embalagem) || 1, tipo: base.tipo || "loja",
       ean: base.ean_lido, criado_em: base.criado_em, total,
       zero: g.vivas.length > 0 && total === 0,
-      datas: g.vivas.filter((c) => c.validade).map((c) => ({ validade: String(c.validade).slice(0, 10), q: Number(c.quantidade) }))
-        .sort((a, b) => a.validade.localeCompare(b.validade)),
       enviada: g.linhas.every((c) => c.enviada),
     };
   });
@@ -810,7 +652,6 @@ function htmlGrupo(g, travado) {
       <span class="item-info">${hora}${g.zero ? ` · não tem ${g.tipo === "deposito" ? "no depósito" : "na loja"}` : ""}${
         !g.zero && g.emb !== 1 ? ` · ${numeroBR(g.total)} × ${numeroBR(g.emb)}` : ""}${
         g.enviada ? "" : " · não enviada"}${g.morta ? " · APAGADA" : ""}</span>
-      ${g.datas.length ? `<span class="chips">${g.datas.map((d) => chipData(d.validade, d.q)).join("")}</span>` : ""}
     </span>
     <span class="hist-qtd">${g.zero ? "—" : numeroBR(un) + " UN"}</span>
     ${g.morta || travado ? "" : `${g.zero ? "" : `<button class="hist-editar" data-editar="${g.chave}" aria-label="Editar">
@@ -822,28 +663,20 @@ function htmlGrupo(g, travado) {
   </div>`;
 }
 
-/* ---------- editor do "Já contei": quantidade, datas e local ---------- */
+/* ---------- editor do "Já contei": quantidade e local ---------- */
 function abrirEditor(chave) {
   const g = grupos().find((x) => x.chave === chave);
   if (!g || g.morta || g.zero) { editando = null; return; }
-  editando = {
-    chave, total: g.total, tipo: g.tipo,
-    comDatas: VAL() || g.datas.length > 0,
-    lista: g.datas.map((d) => ({ ...d })),
-  };
+  editando = { chave, total: g.total, tipo: g.tipo };
 }
 function focarEditor() {
-  setTimeout(() => { const i = $(editando?.comDatas && somaLista(editando.lista) < editando.total ? "ed-data" : "ed-total");
-    if (i) { i.focus(); i.select?.(); } }, 0);
+  setTimeout(() => { const i = $("ed-total"); if (i) { i.focus(); i.select?.(); } }, 0);
 }
-const podeSalvarEditor = () => editando.total > 0 &&
-  (!editando.comDatas || somaLista(editando.lista) === +Number(editando.total).toFixed(3));
+const podeSalvarEditor = () => editando.total > 0;
 
 function htmlEditor(g) {
   const e = editando;
   const item = porSeq.get(g.seq);
-  const un = g.emb !== 1 ? " pct" : " un";
-  const falta = +(e.total - somaLista(e.lista)).toFixed(3);
   return `<div class="editor">
     <div class="item-desc">${esc(item ? item.desc : "EAN " + g.ean)} ${rotuloEmb(g.emb, false, siglaDe(g.seq, g.emb, g.ean))}</div>
     <div class="campo"><label for="ed-total">Quantidade${g.emb !== 1 ? " (pacotes)" : ""}</label>
@@ -851,18 +684,6 @@ function htmlEditor(g) {
     ${R2() ? `<div class="local" role="group" aria-label="Local">
       <button type="button" id="ed-loja" aria-pressed="${e.tipo === "loja"}">LOJA</button>
       <button type="button" id="ed-deposito" aria-pressed="${e.tipo === "deposito"}">DEPÓSITO</button></div>` : ""}
-    ${e.comDatas ? `<div class="datas-cab"><b>Validade</b>
-        <span class="faltam-q${falta === 0 ? " ok" : ""}" id="ed-falta">${falta === 0 ? "tudo com data" : (falta > 0 ? "faltam " : "passou ") + numeroBR(Math.abs(falta))}</span></div>
-      ${e.lista.map((x, i) => `<div class="data-linha">${chipData(x.validade)}
-        <span class="q">${numeroBR(x.q)}${un}</span>
-        <button type="button" class="data-x" data-edrm="${i}" aria-label="Tirar esta data">×</button></div>`).join("")}
-      <div class="data-nova">
-        <div class="campo"><label for="ed-data">Data</label>
-          <input type="text" id="ed-data" inputmode="numeric" placeholder="DD/MM/AA" autocomplete="off"/></div>
-        <div class="campo"><label for="ed-qtd">Qtd</label>
-          <input type="text" id="ed-qtd" inputmode="decimal" autocomplete="off" placeholder="${falta > 0 ? numeroBR(falta) : ""}"/></div>
-      </div>
-      <div class="data-interp" id="ed-interp">Tire a data errada no × e digite a certa</div>` : ""}
     <div class="linha-botoes">
       <button type="button" class="btn btn--2" id="ed-cancelar">Cancelar</button>
       <button type="button" class="btn" id="ed-salvar" ${podeSalvarEditor() ? "" : "disabled"}>Salvar</button>
@@ -872,34 +693,11 @@ function htmlEditor(g) {
 
 function ligarEditor(redesenhar) {
   const e = editando;
-  const atualizarBotao = () => {
-    $("ed-salvar").disabled = !podeSalvarEditor();
-    const f = $("ed-falta");
-    if (f) { const falta = +(e.total - somaLista(e.lista)).toFixed(3);
-      f.className = "faltam-q" + (falta === 0 ? " ok" : "");
-      f.textContent = falta === 0 ? "tudo com data" : (falta > 0 ? "faltam " : "passou ") + numeroBR(Math.abs(falta)); }
-  };
-  // Quantidade nova MENOR que a soma das datas: as datas antigas não servem
-  // mais (10 com data, corrigiu para 2). Apaga e pede as datas de novo.
-  // Só confere ao sair do campo ou no Enter — enquanto digita "12", o "1"
-  // no meio do caminho não pode apagar nada.
-  const ajustarDatas = () => {
-    if (!e.comDatas || !(e.total > 0) || somaLista(e.lista) <= +Number(e.total).toFixed(3)) return false;
-    e.lista = [];
-    aviso("Quantidade menor: as datas anteriores foram apagadas. Digite as datas de novo.", "alerta");
-    redesenhar(); focarEditor();
-    return true;
-  };
+  const atualizarBotao = () => { $("ed-salvar").disabled = !podeSalvarEditor(); };
   $("ed-total").addEventListener("input", (ev) => { e.total = numDigitado(ev.target.value) || 0; atualizarBotao(); });
-  $("ed-total").addEventListener("blur", (ev) => {
-    if (ev.relatedTarget?.id === "ed-cancelar") return;   // cancelando: não mexe
-    ajustarDatas();
-  });
   $("ed-total").addEventListener("keydown", (ev) => {
     if (ev.key !== "Enter") return; ev.preventDefault();
-    if (ajustarDatas()) return;
     if (podeSalvarEditor()) salvarEditor(redesenhar);
-    else if (e.comDatas) $("ed-data")?.focus();
   });
   ["loja", "deposito"].forEach((x) => $("ed-" + x)?.addEventListener("click", () => {
     e.tipo = x; $("ed-loja").setAttribute("aria-pressed", x === "loja");
@@ -910,63 +708,23 @@ function ligarEditor(redesenhar) {
     editando = null; redesenhar();
   });
   $("ed-salvar").addEventListener("click", () => salvarEditor(redesenhar));
-
-  if (!e.comDatas) return;
-  document.querySelectorAll("[data-edrm]").forEach((b) => b.addEventListener("click", () => {
-    e.lista.splice(+b.dataset.edrm, 1); redesenhar(); focarEditor();
-  }));
-  const dIn = $("ed-data"), qIn = $("ed-qtd"), info = $("ed-interp");
-  mascaraData(dIn);
-  const mostrar = () => {
-    const r = lerData(dIn.value);
-    if (!r) { info.className = "data-interp"; info.textContent = "Tire a data errada no × e digite a certa"; return null; }
-    const t = textoData(r); info.className = "data-interp " + t.cls; info.textContent = t.txt;
-    return r.erro ? null : r.iso;
-  };
-  dIn.addEventListener("input", mostrar);
-  dIn.addEventListener("keydown", (ev) => {
-    if (ev.key !== "Enter") return; ev.preventDefault();
-    if (mostrar()) { qIn.focus(); qIn.select(); } else bip("erro");
-  });
-  qIn.addEventListener("keydown", (ev) => {
-    if (ev.key !== "Enter") return; ev.preventDefault();
-    const iso = mostrar(); if (!iso) { dIn.focus(); bip("erro"); return; }
-    const falta = +(e.total - somaLista(e.lista)).toFixed(3);
-    const q = qIn.value.trim() === "" ? falta : numDigitado(qIn.value);
-    if (!(q > 0)) { aviso("Quantidade inválida"); bip("erro"); return; }
-    if (q > falta) { aviso(`Passa do total: faltam só ${numeroBR(falta)}`); bip("erro"); qIn.select(); return; }
-    const ja = e.lista.find((x) => x.validade === iso);
-    if (ja) ja.q = +(ja.q + q).toFixed(3); else e.lista.push({ validade: iso, q });
-    e.lista.sort((a, b) => a.validade.localeCompare(b.validade));
-    if (podeSalvarEditor()) salvarEditor(redesenhar);    // fechou o total: salva sozinho
-    else { redesenhar(); focarEditor(); }
-  });
 }
 
-// Reaproveita as linhas do grupo (mesmo id = upsert no servidor), cria as
-// que faltam e apaga/cancela as que sobraram.
+// Reaproveita a primeira linha viva do grupo (mesmo id = upsert no servidor)
+// e apaga as que sobraram — nos lançamentos antigos um grupo tinha uma linha
+// por data de validade, e a correção junta tudo numa só.
 async function salvarEditor(redesenhar) {
   const e = editando;
   if (!e || !podeSalvarEditor()) return;
   const g = grupos().find((x) => x.chave === e.chave);
   if (!g) { editando = null; redesenhar(); return; }
-  const vivasG = [...g.vivas].sort((a, b) => String(a.validade || "").localeCompare(String(b.validade || "")));
-  const desejado = e.comDatas ? e.lista.map((x) => ({ validade: x.validade, q: x.q }))
-                              : [{ validade: vivasG[0]?.validade || null, q: Number(e.total) }];
-  const gid = e.comDatas ? (vivasG[0]?.grupo_id || novoId()) : (vivasG[0]?.grupo_id || null);
+  const vivasG = [...g.vivas].sort((a, b) => String(a.criado_em || "").localeCompare(String(b.criado_em || "")));
   try {
-    for (let i = 0; i < desejado.length; i++) {
-      const d = desejado[i];
-      const base = vivasG[i];
-      const linha = base
-        ? { ...base, quantidade: d.q, validade: d.validade, tipo: e.tipo, grupo_id: gid, enviada: 0 }
-        : { ...vivasG[0], id: novoId(), quantidade: d.q, validade: d.validade, tipo: e.tipo, grupo_id: gid,
-            criado_em: new Date().toISOString(), cancela_id: null, enviada: 0 };
-      await gravarContagem(linha);
-      const k = contagens.findIndex((c) => c.id === linha.id);
-      if (k >= 0) contagens[k] = linha; else contagens.push(linha);
-    }
-    for (const sobra of vivasG.slice(desejado.length)) await apagarLinha(sobra);
+    const linha = { ...vivasG[0], quantidade: Number(e.total), tipo: e.tipo, enviada: 0 };
+    await gravarContagem(linha);
+    const k = contagens.findIndex((c) => c.id === linha.id);
+    if (k >= 0) contagens[k] = linha; else contagens.push(linha);
+    for (const sobra of vivasG.slice(1)) await apagarLinha(sobra);
     if (ultimo?.some((l) => (l.grupo_id || l.id) === e.chave)) { ultimo = null; $("caixa-ultimo").classList.add("oculto"); }
     aviso("Lançamento corrigido", "ok");
     bip("ok");
@@ -981,7 +739,7 @@ async function salvarEditor(redesenhar) {
   }
 }
 
-// Apagar um lançamento inteiro (todas as datas dele).
+// Apagar um lançamento inteiro (nos antigos, todas as linhas do grupo).
 async function apagarGrupo(chave, aoTerminar) {
   const g = grupos().find((x) => x.chave === chave);
   if (!g) return;
